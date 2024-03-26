@@ -373,7 +373,8 @@ class SequentialDatasetv2_rgbd(Dataset):
             ## TODO:
             depth[depth < -30.] *= 0.
             depth -= depth.min()
-            depth *= depth.max() * 255
+            depth /= depth.max()
+            depth *= 1.
             depths.append(depth)
         images = self.transform(images) # [c f h w]
         depths = self.transform_depth(depths)

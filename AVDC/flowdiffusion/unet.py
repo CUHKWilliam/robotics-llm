@@ -70,7 +70,7 @@ class UnetMW_rgbd(nn.Module):
         super(UnetMW_rgbd, self).__init__()
         self.unet = UNetModel(
             image_size=(128, 128),
-            in_channels=6,
+            in_channels=8,
             model_channels=128,
             out_channels=4,
             num_res_blocks=2,
@@ -78,7 +78,7 @@ class UnetMW_rgbd(nn.Module):
             dropout=0,
             channel_mult=(1, 2, 3, 4, 5),
             conv_resample=True,
-            dims=4,
+            dims=3,
             num_classes=None,
             task_tokens=True,
             task_token_channels=512,
@@ -92,7 +92,7 @@ class UnetMW_rgbd(nn.Module):
         x = rearrange(x[:, :-4], 'b (f c) h w -> b c f h w', c=4)
         x = torch.cat([x, x_cond], dim=1)
         out = self.unet(x, t, task_embed, **kwargs)
-        return r
+        return rearrange(out, 'b c f h w -> b (f c) h w')
 
 class UnetMW_flow(nn.Module):
     def __init__(self):

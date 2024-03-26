@@ -28,6 +28,8 @@ from pytorch_fid.inception import InceptionV3
 from pytorch_fid.fid_score import calculate_frechet_distance
 import matplotlib.pyplot as plt
 import numpy as np
+from minlora import add_lora, apply_to_lora, disable_lora, enable_lora, get_lora_params, merge_lora, name_is_lora, remove_lora, load_multiple_lora, select_lora
+
 
 __version__ = "0.0"
 
@@ -554,7 +556,6 @@ class GoalGaussianDiffusion(nn.Module):
     @torch.no_grad()
     def p_sample_loop(self, shape, x_cond, task_embed, return_all_timesteps=False, guidance_weight=0):
         batch, device = shape[0], self.betas.device
-
         img = torch.randn(shape, device=device)
         imgs = [img]
 
@@ -687,11 +688,35 @@ class GoalGaussianDiffusion(nn.Module):
         b, c, h, w, device, img_size, = *img.shape, img.device, self.image_size
         assert h == img_size[0] and w == img_size[1], f'height and width of image must be {img_size}, got({h}, {w})'
         t = torch.randint(0, self.num_timesteps, (b,), device=device).long()
-
         img = self.normalize(img)
         return self.p_losses(img, t, img_cond, task_embed)
 
 # trainer class
+def sample_with_binear(fmap, kp):
+    max_x, max_y = fmap.shape[1]-1, fmap.shape[0]-1
+    x0, y0 = int(kp[0]), int(kp[1])
+    x1, y1 = x0+1, y0+1
+    x, y = kp[0]-x0, kp[1]-y0
+    fmap_x0y0 = fmap[y0, x0]
+    fmap_x1y0 = fmap[y0, x1]
+    fmap_x0y1 = fmap[y1, x0]
+    fmap_x1y1 = fmap[y1, x1]
+    fmap_y0 = fmap_x0y0 * (1-x) + fmap_x1y0 * x
+    fmap_y1 = fmap_x0y1 * (1-x) + fmap_x1y1 * x
+    feature = fmap_y0 * (1-y) + fmap_y1 * y
+    return feature
+
+def to_3d(points, depth, cmat):
+    points = points.reshape(-1, 2)
+    depths = np.array([[sample_with_binear(depth, kp)] for kp in points])
+    # depths = np.array([[depth[int(p[1]), int(p[0])]] for p in points])
+    points = np.concatenate([points, np.ones((points.shape[0], 1))], axis=1) * depths
+    points = np.concatenate([points, np.ones((points.shape[0], 1))], axis=1)
+    cmat = np.concatenate([cmat, np.array([[0, 0, 0, 1]])], axis=0)
+    points = np.dot(np.linalg.inv(cmat), points.T).T
+    points = points[:, :3]
+    return points
+
 
 class Trainer(object):
     def __init__(
@@ -767,7 +792,6 @@ class Trainer(object):
 
         self.train_num_steps = train_num_steps
         self.image_size = diffusion_model.image_size
-
         # dataset and dataloader
 
         
@@ -784,10 +808,13 @@ class Trainer(object):
         self.dl = cycle(dl)
         self.valid_dl = DataLoader(self.valid_ds, batch_size = valid_batch_size, shuffle = False, pin_memory = True, num_workers = 0)
 
-
+        train_params = list(get_lora_params(diffusion_model))
+        for key, val in diffusion_model.named_parameters():
+            if 'input_blocks' in key or 'out' in key or 'output_blocks' in key:
+                train_params.append(val)
         # optimizer
         parameters = [
-            {"params": list(get_lora_params(diffusion_model))},
+            {"params": train_params},
         ]
         self.opt = Adam(parameters, lr = train_lr, betas = adam_betas)
 
@@ -835,12 +862,40 @@ class Trainer(object):
         data = torch.load(str(self.results_folder / f'model-{milestone}.pt'), map_location=device)
 
         model = self.accelerator.unwrap_model(self.model)
-        model.load_state_dict(data['model'])
+        
+        ckpt_param = data['model']
+        model_param = {}
+        for key, val in model.named_parameters():
+            model_param[key] = val
+        for key, val in model.named_buffers():
+            model_param[key] = val
+        ckpt_param2 = {}
+        for key in ckpt_param.keys():
+            if key in model_param:
+                if ckpt_param[key].size() == model_param[key].size():
+                    ckpt_param2[key] = ckpt_param[key]
+        model.load_state_dict(ckpt_param2, strict=False)
 
         self.step = data['step']
-        self.opt.load_state_dict(data['opt'])
+        try:
+            self.opt.load_state_dict(data['opt'])
+        except:
+            pass
+
         if self.accelerator.is_main_process:
-            self.ema.load_state_dict(data["ema"])
+            model_param = {}
+            ckpt_param2 = {}
+            ckpt_param = data['ema']
+            for key, val in self.ema.named_parameters():
+                model_param[key] = val
+            for key, val in self.ema.named_buffers():
+                model_param[key] = val
+            ckpt_param2 = {}
+            for key in ckpt_param.keys():
+                if key in model_param:
+                    if ckpt_param[key].size() == model_param[key].size():
+                        ckpt_param2[key] = ckpt_param[key]
+            self.ema.load_state_dict(ckpt_param2, strict=False)
 
         if 'version' in data:
             print(f"loading from version {data['version']}")
@@ -1019,7 +1074,7 @@ class Trainer(object):
                         
                         gt_xs = torch.cat(xs, dim = 0) # [batch_size, 3*n, 120, 160]
                         # make it [batchsize*n, 3, 120, 160]
-                        n_rows = gt_xs.shape[1] // 3
+                        n_rows = gt_xs.shape[1] // 4
                         gt_xs = rearrange(gt_xs, 'b (n c) h w -> b n c h w', n=n_rows)
                         ### save images
                         x_conds = torch.cat(x_conds, dim = 0).detach().cpu()
@@ -1029,19 +1084,44 @@ class Trainer(object):
 
                         gt_first = gt_xs[:, :1]
                         gt_last = gt_xs[:, -1:]
-
-
-
+                        gt_img_first, gt_depth_first = gt_first[:, :, :3], gt_first[:, :, 3:]
+                        gt_img_last, gt_depth_last = gt_last[:, :, :3], gt_last[:, :, 3:]
+                        gt_img_xs, gt_depth_xs = gt_xs[:, :, :3], gt_xs[:, :, 3:]
+                        all_img_xs, all_depth_xs = all_xs[:, :, :3], all_xs[:, :, 3:]
                         if self.step == self.save_and_sample_every:
                             os.makedirs(str(self.results_folder / f'imgs'), exist_ok = True)
-                            gt_img = torch.cat([gt_first, gt_last, gt_xs], dim=1)
+                            gt_img = torch.cat([gt_img_first, gt_img_last, gt_img_xs], dim=1)
                             gt_img = rearrange(gt_img, 'b n c h w -> (b n) c h w', n=n_rows+2)
                             utils.save_image(gt_img, str(self.results_folder / f'imgs/gt_img.png'), nrow=n_rows+2)
 
                         os.makedirs(str(self.results_folder / f'imgs/outputs'), exist_ok = True)
-                        pred_img = torch.cat([gt_first, gt_last,  all_xs], dim=1)
+                        pred_img = torch.cat([gt_img_first, gt_img_last,  all_img_xs], dim=1)
                         pred_img = rearrange(pred_img, 'b n c h w -> (b n) c h w', n=n_rows+2)
                         utils.save_image(pred_img, str(self.results_folder / f'imgs/outputs/sample-{milestone}.png'), nrow=n_rows+2)
+                        pred_depth = torch.cat([gt_depth_first, gt_depth_last, all_depth_xs], dim=1)
+                        pred_depth = rearrange(pred_depth, 'b n c h w -> (b n) c h w', n=n_rows+2)
+                        
+                        ## TODO: for vis
+                        # import matplotlib.pyplot as plt
+                        # cmat = np.array([[ 9.63268099e+01, -3.13378818e+02,  4.34104016e+01,
+                        #                 -4.54382771e+01],
+                        #             [-2.55555772e+01, -2.55555772e+01,  3.11293150e+02,
+                        #                 -2.25109256e+02],
+                        #             [-6.80413817e-01, -6.80413817e-01,  2.72165527e-01,
+                        #                 -1.18392004e+00]])
+                        # for i in range(len(pred_depth)):
+                        #     a_depth, a_img = pred_depth[i], pred_img[i]
+                        #     pts_2d = torch.from_numpy(np.stack(np.meshgrid(np.arange(gt_img_first.size(-1)-1), np.arange(gt_img_first.size(-2)-1)), axis=-1))
+                        #     pts_2d = pts_2d.view(-1, 2)
+                        #     a_depth = a_depth[0]
+                        #     pts = to_3d(pts_2d, a_depth, cmat)
+                        #     fig = plt.figure()
+                        #     ax = fig.add_subplot(projection='3d')
+                        #     colors = a_img[:, :-1, :-1].permute(1, 2, 0).reshape(-1, 3).cpu().numpy()
+                        #     ax.scatter(pts[:, 0], pts[:, 1], pts[:, 2], c=colors)
+                        #     plt.show()
+                        #     import ipdb;ipdb.set_trace()
+                        ## TODO: end todo
 
                         self.save(milestone)
 

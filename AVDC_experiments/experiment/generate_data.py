@@ -64,7 +64,7 @@ def run(args):
             
             if len(images) <= 500:
                 print("success")
-                SAVE_PATH = '/data/wltang/robotic-llm/AVDC/datasets/metaworld/metaworld_dataset'
+                SAVE_PATH = '/data/wltang/robotic-llm/AVDC/datasets/metaworld/metaworld_dataset_2'
                 save_path = SAVE_PATH
                 os.makedirs(save_path, exist_ok=True)
                 save_path = os.path.join(save_path, camera)

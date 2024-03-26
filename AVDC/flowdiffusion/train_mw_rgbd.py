@@ -4,6 +4,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 from datasets import SequentialDatasetv2_rgbd
 from torch.utils.data import Subset
 import argparse
+from minlora import add_lora, apply_to_lora, disable_lora, enable_lora, get_lora_params, merge_lora, name_is_lora, remove_lora, load_multiple_lora, select_lora
 
 
 def main(args):
@@ -32,8 +33,8 @@ def main(args):
     text_encoder.requires_grad_(False)
     text_encoder.eval()
 
-    add_lora(unet)
-    
+    # add_lora(unet)
+
 
 
     diffusion = GoalGaussianDiffusion(
@@ -59,8 +60,8 @@ def main(args):
         save_and_sample_every =1,
         ema_update_every = 10,
         ema_decay = 0.999,
-        train_batch_size =16,
-        valid_batch_size =32,
+        train_batch_size =1,
+        valid_batch_size =1,
         gradient_accumulate_every = 1,
         num_samples=valid_n, 
         results_folder ='../results/mw-lora',

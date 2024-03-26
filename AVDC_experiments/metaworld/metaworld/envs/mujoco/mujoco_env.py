@@ -60,6 +60,10 @@ class MujocoEnv(gym.Env, abc.ABC):
 
         self.np_random, _ = seeding.np_random(None)
 
+        import matplotlib.pyplot as plt
+        self.sim.render()
+        import ipdb;ipdb.set_trace()
+
     def seed(self, seed):
         assert seed is not None
         self.np_random, seed = seeding.np_random(seed)
