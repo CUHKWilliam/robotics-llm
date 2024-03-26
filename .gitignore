@@ -1,0 +1,9 @@
+*.pkl
+*.pth
+*.so
+*.png
+*.jpeg
+*.jpg
+*.pyc
+*.npy
+*.pt
