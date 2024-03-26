@@ -786,8 +786,10 @@ class Trainer(object):
 
 
         # optimizer
-
-        self.opt = Adam(diffusion_model.parameters(), lr = train_lr, betas = adam_betas)
+        parameters = [
+            {"params": list(get_lora_params(diffusion_model))},
+        ]
+        self.opt = Adam(parameters, lr = train_lr, betas = adam_betas)
 
         # for logging results in a folder periodically
 

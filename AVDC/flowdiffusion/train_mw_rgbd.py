@@ -32,6 +32,10 @@ def main(args):
     text_encoder.requires_grad_(False)
     text_encoder.eval()
 
+    add_lora(unet)
+    
+
+
     diffusion = GoalGaussianDiffusion(
         channels=4*(sample_per_seq-1),
         model=unet,
