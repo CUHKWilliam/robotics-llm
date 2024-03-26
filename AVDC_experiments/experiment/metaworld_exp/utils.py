@@ -62,7 +62,7 @@ def collect_video(init_obs, env, policy, camera_name='corner3', resolution=(640,
         cameras = ["corner3", "corner", "corner2"]
         camera_name = np.random.choice(cameras)
 
-    image, depth = env.render(depth=True, offscreen=True, camera_name=camera_name, resolution=resolution)
+    image, depth = env.render(depth=True, offscreen=True, camera_name=camera_name, resolution=resolution, body_invisible=True)
     images += [image]
     depths += [depth]
     
@@ -79,12 +79,10 @@ def collect_video(init_obs, env, policy, camera_name='corner3', resolution=(640,
             break
         if dd != 10 and not done:
             break
-        image, depth = env.render(depth=True, offscreen=True, camera_name=camera_name, resolution=resolution)
+        image, depth = env.render(depth=True, offscreen=True, camera_name=camera_name, resolution=resolution, body_invisible=True)
         images += [image]
         depths += [depth]
-        
-        
-        
+                
     return images, depths, episode_return
 
 def sample_n_frames(frames, n):

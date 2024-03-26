@@ -432,6 +432,7 @@ class MyPolicy_CL(Policy):
 
         # measure time for action planning
         grasp, transforms, center_2ds, sampless = get_transforms(seg, depth, cmat, flow)
+
         transform_mats = [get_transformation_matrix(*transform) for transform in transforms]
         time_action = time.time() - start
 

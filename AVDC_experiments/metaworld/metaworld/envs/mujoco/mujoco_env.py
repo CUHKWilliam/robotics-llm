@@ -59,10 +59,20 @@ class MujocoEnv(gym.Env, abc.ABC):
         self._did_see_sim_exception = False
 
         self.np_random, _ = seeding.np_random(None)
-
-        import matplotlib.pyplot as plt
-        self.sim.render()
-        import ipdb;ipdb.set_trace()
+        
+        # invisible_ids = []
+        # for name in self.model.body_names:
+        #     if 'pad' in name or 'claw' in name or 'hand' in name or ('right' in name and 'right_l1_2' not in name) or 'screen' in name or 'head' in name:
+        #         invisible_ids.append(self.model.body_name2id(name))
+        # # for name in self.model.joint_names:
+        # #     invisible_ids.append(self.model.joint_name2id(name))
+        # for id in invisible_ids:
+        #     self.model.geom_rgba[id] = np.array([0,0,0,0])
+        # self.model.site_rgba[:, -1] = 0.
+        # import matplotlib.pyplot as plt
+        # plt.imshow(np.stack(self.render(camera_name='corner'), axis=0))
+        # plt.show()
+        # import ipdb;ipdb.set_trace()
 
     def seed(self, seed):
         assert seed is not None
@@ -126,19 +136,32 @@ class MujocoEnv(gym.Env, abc.ABC):
                 warnings.warn(str(err), category=RuntimeWarning)
                 self._did_see_sim_exception = True
 
-    def render(self, offscreen=True, camera_name="corner3", resolution=(640, 480), depth=False, segmentation=False):
+    def render(self, offscreen=True, camera_name="corner3", resolution=(640, 480), depth=False, segmentation=False, body_invisible=False):
         assert_string = ("camera_name should be one of ",
                 "corner3, corner, corner2, topview, gripperPOV, behindGripper")
         assert camera_name in {"corner3", "corner", "corner2", 
             "topview", "gripperPOV", "behindGripper"}, assert_string
+        self.model.site_rgba[:, -1] = 0.
+        if body_invisible:
+            invisible_ids = []
+            rgba = self.model.geom_rgba.copy()
+            for name in self.model.body_names:
+                if 'pad' in name or 'claw' in name or 'hand' in name or ('right' in name and 'right_l1_2' not in name) or 'screen' in name or 'head' in name:
+                    invisible_ids.append(self.model.body_name2id(name))
+            for id in invisible_ids:
+                self.model.geom_rgba[id] = np.array([0,0,0,0])
         if segmentation: 
-            return self.sim.render(
+            data = self.sim.render(
                 *resolution,
                 mode='offscreen',
                 camera_name=camera_name,
                 depth=False,
                 segmentation=True,
             )
+            if body_invisible:
+                for id in invisible_ids:
+                    self.model.geom_rgba[id] = rgba[id]
+            return data
         elif not offscreen:
             self._get_viewer('human').render()
         else:
@@ -158,6 +181,9 @@ class MujocoEnv(gym.Env, abc.ABC):
                 # http://stackoverflow.com/a/6657284/1461210
                 # https://www.khronos.org/opengl/wiki/Depth_Buffer_Precision
                 results[1] = -near / (1 - d * (1 - near / far))
+            if body_invisible:
+                for id in invisible_ids:
+                    self.model.geom_rgba[id] = rgba[id]
             return results
 
     def close(self):

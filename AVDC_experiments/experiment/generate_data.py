@@ -55,29 +55,31 @@ def run(args):
     for camera in cameras:
         cnt = 0
         for seed in tqdm(range(n_exps)):
-            env = benchmark_env(seed=seed)
-            
-            obs = env.reset()
-            policy = MyPolicy_CL(env, env_name, camera, video_model, flow_model, max_replans=0)
+            try:
+                env = benchmark_env(seed=seed)
+                
+                obs = env.reset()
+                policy = MyPolicy_CL(env, env_name, camera, video_model, flow_model, max_replans=0)
 
-            images, depths, episode_return = collect_video(obs, env, policy, camera_name=camera, resolution=resolution)
-            
-            if len(images) <= 500:
-                print("success")
-                SAVE_PATH = '/data/wltang/robotic-llm/AVDC/datasets/metaworld/metaworld_dataset_2'
-                save_path = SAVE_PATH
-                os.makedirs(save_path, exist_ok=True)
-                save_path = os.path.join(save_path, camera)
-                os.makedirs(save_path, exist_ok=True)
-                save_path = os.path.join(save_path, "{:03}".format(cnt))
-                os.makedirs(save_path, exist_ok=True)
-                for i in range(len(images)):
-                    image, depth = images[i], depths[i]
-                    depth = np.expand_dims(depth, axis=-1)
-                    image_depth = np.concatenate([image, depth], axis=-1)
-                    np.save(os.path.join(save_path, "{:03}.npy".format(i)), image_depth)
-                cnt += 1
-                import ipdb;ipdb.set_trace()
+                images, depths, episode_return = collect_video(obs, env, policy, camera_name=camera, resolution=resolution)
+                
+                if len(images) <= 500:
+                    print("success")
+                    SAVE_PATH = '/data/wltang/robotic-llm/AVDC/datasets/metaworld/metaworld_dataset_2'
+                    save_path = SAVE_PATH
+                    os.makedirs(save_path, exist_ok=True)
+                    save_path = os.path.join(save_path, camera)
+                    os.makedirs(save_path, exist_ok=True)
+                    save_path = os.path.join(save_path, "{:03}".format(cnt))
+                    os.makedirs(save_path, exist_ok=True)
+                    for i in range(len(images)):
+                        image, depth = images[i], depths[i]
+                        depth = np.expand_dims(depth, axis=-1)
+                        image_depth = np.concatenate([image, depth], axis=-1)
+                        np.save(os.path.join(save_path, "{:03}.npy".format(i)), image_depth)
+                    cnt += 1
+            except:
+                print('error')
 
 if __name__ == "__main__":
     parser = ArgumentParser()
