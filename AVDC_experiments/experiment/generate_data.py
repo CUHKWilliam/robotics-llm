@@ -26,12 +26,9 @@ def get_task_text(env_name):
     return name
 
 def get_policy(env_name):
-    name = "".join(" ".join(get_task_text(env_name)).title().split(" "))
+    name = "".join(get_task_text(env_name).title().split(" "))
     policy_name = "Sawyer" + name + "V2Policy"
-    try:
-        policy = getattr(policies, policy_name)()
-    except:
-        policy = None
+    policy = getattr(policies, policy_name)()
     return policy
 
 with open("name2maskid.json", "r") as f:
@@ -55,36 +52,73 @@ def run(args):
     for camera in cameras:
         cnt = 0
         for seed in tqdm(range(n_exps)):
-            try:
-                env = benchmark_env(seed=seed)
+            # try:
+            #     env = benchmark_env(seed=seed)
                 
-                obs = env.reset()
-                policy = MyPolicy_CL(env, env_name, camera, video_model, flow_model, max_replans=0)
+            #     obs = env.reset()
+            #     # policy = MyPolicy_CL(env, env_name, camera, video_model, flow_model, max_replans=5)
+            #     policy = get_policy(env_name)
 
-                images, depths, episode_return = collect_video(obs, env, policy, camera_name=camera, resolution=resolution)
-                
-                if len(images) <= 500:
-                    print("success")
-                    SAVE_PATH = '/data/wltang/robotic-llm/AVDC/datasets/metaworld/metaworld_dataset_2'
-                    save_path = SAVE_PATH
-                    os.makedirs(save_path, exist_ok=True)
-                    save_path = os.path.join(save_path, camera)
-                    os.makedirs(save_path, exist_ok=True)
-                    save_path = os.path.join(save_path, "{:03}".format(cnt))
-                    os.makedirs(save_path, exist_ok=True)
-                    for i in range(len(images)):
-                        image, depth = images[i], depths[i]
-                        depth = np.expand_dims(depth, axis=-1)
-                        image_depth = np.concatenate([image, depth], axis=-1)
-                        np.save(os.path.join(save_path, "{:03}.npy".format(i)), image_depth)
-                    cnt += 1
-            except:
-                print('error')
+            #     # images, depths, episode_return = collect_video(obs, env, policy, camera_name=camera, resolution=resolution)
+            #     next_obs, _, _, _, info = env.step()
+
+            #     if len(images) <= 500:
+            #         print("success")
+            #         SAVE_PATH = '/data/wltang/robotic-llm/AVDC/datasets/metaworld/metaworld_dataset_2'
+            #         save_path = SAVE_PATH
+            #         os.makedirs(save_path, exist_ok=True)
+            #         save_path = os.path.join(save_path, camera)
+            #         os.makedirs(save_path, exist_ok=True)
+            #         save_path = os.path.join(save_path, "{:03}".format(cnt))
+            #         os.makedirs(save_path, exist_ok=True)
+            #         for i in range(len(images)):
+            #             image, depth = images[i], depths[i]
+            #             depth = np.expand_dims(depth, axis=-1)
+            #             image_depth = np.concatenate([image, depth], axis=-1)
+            #             np.save(os.path.join(save_path, "{:03}.npy".format(i)), image_depth)
+            #         cnt += 1
+            # except:
+            #     print('error')
+
+
+            env = benchmark_env(seed=seed)
+            obs = env.reset()
+            policy = get_policy(env_name)
+            cnt2 = 0
+            done = False
+            images = []
+            depths = []
+            while cnt2 < 500 and not done:
+                action = policy.get_action(obs)
+                next_obs, _, _, info = env.step(action)
+                obs = next_obs
+                if int(info['success']) == 1:
+                    done = True
+                img, depth = env.render(camera_name='corner', depth=True, body_invisible=True)
+                img = np.stack(img, axis=0)
+                images.append(img)
+                depths.append(depth)
+
+            if len(images) <= 500:
+                print("success")
+                SAVE_PATH = '/data/wltang/robotic-llm/AVDC/datasets/metaworld/metaworld_dataset_2'
+                save_path = SAVE_PATH
+                os.makedirs(save_path, exist_ok=True)
+                save_path = os.path.join(save_path, camera)
+                os.makedirs(save_path, exist_ok=True)
+                save_path = os.path.join(save_path, "{:03}".format(cnt))
+                os.makedirs(save_path, exist_ok=True)
+                for i in range(len(images)):
+                    image, depth = images[i], depths[i]
+                    depth = np.expand_dims(depth, axis=-1)
+                    image_depth = np.concatenate([image, depth], axis=-1)
+                    np.save(os.path.join(save_path, "{:03}.npy".format(i)), image_depth)
+                cnt += 1
 
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--env_name", type=str, default="door-open-v2-goal-observable")
-    parser.add_argument("--n_exps", type=int, default=25)
+    parser.add_argument("--n_exps", type=int, default=200)
     parser.add_argument("--ckpt_dir", type=str, default="../ckpts/metaworld")
     parser.add_argument("--milestone", type=int, default=24)
     parser.add_argument("--result_root", type=str, default="../results/results_AVDC_full")
