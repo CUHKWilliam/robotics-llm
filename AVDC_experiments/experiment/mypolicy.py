@@ -4,7 +4,7 @@ import numpy as np
 from metaworld_exp.utils import get_seg, get_cmat
 import json
 import cv2
-from flowdiffusion.inference_utils import pred_video
+from flowdiffusion.inference_utils import pred_video, pred_video_rgbd
 from myutils import pred_flow_frame, get_transforms, get_transformation_matrix
 import torch
 from PIL import Image
@@ -525,6 +525,218 @@ class MyPolicy_CL(Policy):
             return 0.8
         else:
             return -0.8
+
+
+def sample_with_binear(fmap, kp):
+    max_x, max_y = fmap.shape[1]-1, fmap.shape[0]-1
+    x0, y0 = int(kp[0]), int(kp[1])
+    x1, y1 = x0+1, y0+1
+    x, y = kp[0]-x0, kp[1]-y0
+    fmap_x0y0 = fmap[y0, x0]
+    fmap_x1y0 = fmap[y0, x1]
+    fmap_x0y1 = fmap[y1, x0]
+    fmap_x1y1 = fmap[y1, x1]
+    fmap_y0 = fmap_x0y0 * (1-x) + fmap_x1y0 * x
+    fmap_y1 = fmap_x0y1 * (1-x) + fmap_x1y1 * x
+    feature = fmap_y0 * (1-y) + fmap_y1 * y
+    return feature
+
+def to_3d(points, depth, cmat):
+    points = points.reshape(-1, 2)
+    depths = np.array([[sample_with_binear(depth, kp)] for kp in points])
+    # depths = np.array([[depth[int(p[1]), int(p[0])]] for p in points])
+    points = np.concatenate([points, np.ones((points.shape[0], 1))], axis=1) * depths
+    points = np.concatenate([points, np.ones((points.shape[0], 1))], axis=1)
+    cmat = np.concatenate([cmat, np.array([[0, 0, 0, 1]])], axis=0)
+    points = np.dot(np.linalg.inv(cmat), points.T).T
+    points = points[:, :3]
+    return points
+
+
+class MyPolicy_CL_rgbd(Policy):
+    def __init__(self, env, task, camera, video_model, flow_model, resolution=(320, 240), plan_timeout=15, max_replans=0, log=False):
+        self.env = env
+        self.seg_ids = name2maskid[task]
+        self.task = " ".join(task.split('-')[:-3])
+        self.camera = camera
+        self.video_model = video_model
+        self.flow_model = flow_model
+        self.resolution = resolution
+        self.plan_timeout = plan_timeout
+        self.last_pos = np.array([0, 0, 0])
+        self.max_replans = max_replans
+        self.replans = max_replans + 1
+        self.time_from_last_plan = 0
+        self.log = log
+
+        grasp, transforms = self.calculate_next_plan()
+        grasp = grasp[0]
+
+        subgoals = self.calc_subgoals(grasp, transforms)
+        ### for stablity, extrapolate the last subgoal
+        # next_subgoal = subgoals[-1] + (subgoals[-1] - subgoals[-2])
+        # subgoals.append(next_subgoal)
+        subgoals_np = np.array(subgoals)
+        # print(subgoals_np)
+        max_deltaz = abs(subgoals_np[1:-2, 2] - subgoals_np[2:-1, 2]).max()
+        if max_deltaz > 0.1:
+            self.mode = "grasp"
+        else:
+            self.mode = "push"
+            # move the gripper down a bit for robustness
+            # (Attempt to use the gripper wrist for pushing, not fingers)
+            subgoals = [s - np.array([0, 0, 0.03]) for s in subgoals]
+        
+        self.grasp = grasp
+        self.subgoals = subgoals
+        self.init_grasp()  
+
+    def calc_subgoals(self, grasp, transforms):
+        subgoals = [grasp]
+        for transforms in transforms:
+            grasp_ext = np.concatenate([subgoals[-1], [1]])
+            next_subgoal = (transforms @ grasp_ext)[:3]
+            subgoals.append(next_subgoal)
+        return subgoals
+
+    def calculate_next_plan(self):
+        image, depth = self.env.render(depth=True, camera_name=self.camera, body_invisible=True)
+        low, high = -8., -1.5
+        depth[depth < low] = low
+        depth[depth > high] = high
+        depth -= low
+        depth /= (high - low)
+        data = self.env.render(camera_name=self.camera, depth=True, body_invisible=True, segmentation=True)
+        segm = np.zeros((image.shape[0], image.shape[1]))
+        segm[data[:, :, -1] == 31] = 1
+        segm[data[:, :, -1] == 33] = 2
+        segm1 = (segm == 1).astype(depth.dtype)
+        segm2 = (segm == 2).astype(depth.dtype)
+        image_depth_segm = np.concatenate([image, depth[..., None], segm1[..., None], segm2[..., None]], axis=-1)
+        cmat = get_cmat(self.env, self.camera, resolution=self.resolution)
+        # seg = get_seg(self.env, resolution=self.resolution, camera=self.camera, seg_ids=self.seg_ids)
+
+        # measure time for vidgen
+        start = time.time()
+        images, depths, segms1, segms2 = pred_video_rgbd(self.video_model, image_depth_segm, self.task)
+        time_vid = time.time() - start
+        
+        for i in range(len(segms1)):
+            segm1, segm2 = segms1[i], segms2[i]
+            pts_2d = torch.from_numpy(np.stack(np.meshgrid(np.arange(images.shape[-1]-1), np.arange(images.shape[-2]-1)), axis=-1))
+            pts_2d = pts_2d.reshape(-1, 2)
+            depth = depths[i][0]
+            low, high = -8., -1.5
+            depth *= (high - low)
+            depth += low
+            image = images[i].transpose((1, 2, 0))
+            pts = to_3d(pts_2d, depth, cmat)
+            segm1 = segm1.detach().cpu().numpy()[0]
+            segm2 = segm2.detach().cpu().numpy()[0]
+            # cols = np.ones((segm1.shape[0], segm1.shape[1], 3))
+            cols = image[:image.shape[0], :image.shape[1], :] / 256.
+            # cols[segm1 > 0.8] = np.array([1, 0, 0])
+            # cols[segm2 > 0.8] = np.array([0, 1, 0])
+            cols = cols[:cols.shape[0]-1, :cols.shape[1]-1, :].reshape(-1, 3)
+            import open3d as o3d
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(pts)
+            pcd.colors = o3d.utility.Vector3dVector(cols)
+            o3d.io.write_point_cloud('debug.ply', pcd)
+            import ipdb;ipdb.set_trace()
+
+        # measure time for action planning
+        time_action = time.time() - start
+
+        if self.log: log_time(time_vid/t, time_flow/t, time_action/t, self.max_replans-self.replans+1)
+        if self.log and (self.time_from_last_plan!=0): log_time_execution(self.time_from_last_plan*0.1/t, self.max_replans-self.replans)
+
+        self.replans -= 1
+        self.replan_countdown = self.plan_timeout
+        self.time_from_last_plan = 0
+
+        return grasp, transform_mats
+
+    @staticmethod
+    @assert_fully_parsed
+    def _parse_obs(obs):
+        return {
+            'hand_pos': obs[:3],
+            'unused_info': obs[3:],
+        }
+        
+    def init_grasp(self):
+        self.grasped = False
+        if self.mode == "push":
+            for subgoal in self.subgoals:
+                norm = np.linalg.norm(subgoal[:2] - self.grasp[:2])
+                direction = subgoal[:2] - self.grasp[:2]
+                direction = direction / norm
+                if norm > 0.1:
+                    break
+            self.grasp[:2] = self.grasp[:2] - direction * 0.08
+
+    def get_action(self, obs):
+        o_d = self._parse_obs(obs)
+        # if stucked (not moving), step the countdown
+        if np.linalg.norm(o_d['hand_pos'] - self.last_pos) < 0.001:
+            self.replan_countdown -= 1
+        self.last_pos = o_d['hand_pos']
+
+        self.time_from_last_plan += 1
+
+        action = Action({
+            'delta_pos': np.arange(3),
+            'grab_effort': 3
+        })
+
+        action['delta_pos'] = move(o_d['hand_pos'], to_xyz=self._desired_pos(o_d), p=20.)
+        action['grab_effort'] = self._grab_effort(o_d)
+
+        return action.array
+
+    def _desired_pos(self, o_d):
+        pos_curr = o_d['hand_pos']
+        move_precision = 0.12 if self.mode == "push" else 0.04
+
+        # if stucked/stopped(all subgoals reached), replan
+        if self.replan_countdown <= 0 and self.replans > 0:
+            grasp, transforms = self.calculate_next_plan()
+            self.grasp = grasp[0]
+            self.subgoals = self.calc_subgoals(grasp[0], transforms)
+            if self.mode == "push": self.init_grasp()
+            return self.subgoals[0]
+        # place end effector above object
+        elif not self.grasped and np.linalg.norm(pos_curr[:2] - self.grasp[:2]) > 0.02:
+            return self.grasp + np.array([0., 0., 0.2])
+        # drop end effector down on top of object
+        elif not self.grasped and np.linalg.norm(pos_curr[2] - self.grasp[2]) > 0.04:
+            return self.grasp
+        # grab object (if in grasp mode)
+        elif not self.grasped and np.linalg.norm(pos_curr[2] - self.grasp[2]) <= 0.04:
+            self.grasped = True
+            return self.grasp
+        # move end effector to the current subgoal
+        elif np.linalg.norm(pos_curr - self.subgoals[0]) > move_precision:
+            return self.subgoals[0]
+        # if close enough to the current subgoal, move to the next subgoal
+        elif len(self.subgoals) > 1:
+            self.subgoals.pop(0)
+            return self.subgoals[0]
+        # move to the last subgoal
+        # ideally the gripper will stop at the last subgoal and the countdown will run out quickly
+        # and then the next plan (next set of subgoals) will be calculated
+        else:
+            return self.subgoals[0]
+               
+    def _grab_effort(self, o_d):
+        pos_curr = o_d['hand_pos']
+
+        if self.grasped or self.mode == "push" or not self.grasped and np.linalg.norm(pos_curr[2] - self.grasp[2]) < 0.08:
+            return 0.8
+        else:
+            return -0.8
+
 
 
 class MyPolicy_CL_seg(Policy):

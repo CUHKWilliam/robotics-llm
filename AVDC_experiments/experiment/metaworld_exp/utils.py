@@ -91,5 +91,40 @@ def sample_n_frames(frames, n):
 
 
 
+def collect_video_rgbd(init_obs, env, policy, camera_name='corner3', resolution=(640, 480)):
+    images = []
+    depths = []
+    episode_return = 0
+    done = False
+    obs = init_obs
+    if camera_name is None:
+        # cameras = ["corner3", "corner", "corner2"]
+        cameras = ['corner']
+        camera_name = np.random.choice(cameras)
+
+    image, depth = env.render(depth=True, offscreen=True, camera_name=camera_name, resolution=resolution, body_invisible=True)
+    images += [image]
+    depths += [depth]
+    
+    dd = 10 ### collect a few more steps after done
+    while dd:
+        action = policy.get_action(obs)
+        try:
+            obs, reward, done, info = env.step(action)
+            done = info['success']
+            dd -= done
+            episode_return += reward
+        except Exception as e:
+            print(e)
+            break
+        if dd != 10 and not done:
+            break
+        image, depth = env.render(depth=True, offscreen=True, camera_name=camera_name, resolution=resolution, body_invisible=True)
+        images += [image]
+        depths += [depth]
+                
+    return images, depths, episode_return
+
+
     
     

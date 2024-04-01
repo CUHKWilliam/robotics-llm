@@ -33,14 +33,14 @@ def main(args):
     text_encoder.requires_grad_(False)
     text_encoder.eval()
 
-    add_lora(unet)
+    # add_lora(unet)
 
     diffusion = GoalGaussianDiffusion(
-        channels=4*(sample_per_seq-1),
+        channels=6*(sample_per_seq-1),
         model=unet,
         image_size=target_size,
         timesteps=100,
-        sampling_timesteps=args.sample_steps,
+        sampling_timesteps=3,
         loss_type='l2',
         objective='pred_v',
         beta_schedule = 'cosine',
@@ -54,8 +54,8 @@ def main(args):
         train_set=train_set,
         valid_set=valid_set,
         train_lr=1e-4,
-        train_num_steps =80000,
-        save_and_sample_every =500,
+        train_num_steps =400000,
+        save_and_sample_every =2000,
         ema_update_every = 10,
         ema_decay = 0.999,
         train_batch_size =1,

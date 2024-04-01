@@ -70,9 +70,9 @@ class UnetMW_rgbd(nn.Module):
         super(UnetMW_rgbd, self).__init__()
         self.unet = UNetModel(
             image_size=(128, 128),
-            in_channels=8,
+            in_channels=12,
             model_channels=128,
-            out_channels=4,
+            out_channels=6,
             num_res_blocks=2,
             attention_resolutions=(8, 16),
             dropout=0,
@@ -87,9 +87,9 @@ class UnetMW_rgbd(nn.Module):
             num_head_channels=32,
         )
     def forward(self, x, t, task_embed=None, **kwargs):
-        f = x.shape[1] // 4 - 1 
-        x_cond = repeat(x[:, -4:], 'b c h w -> b c f h w', f=f)
-        x = rearrange(x[:, :-4], 'b (f c) h w -> b c f h w', c=4)
+        f = x.shape[1] // 6 - 1 
+        x_cond = repeat(x[:, -6:], 'b c h w -> b c f h w', f=f)
+        x = rearrange(x[:, :-6], 'b (f c) h w -> b c f h w', c=6)
         x = torch.cat([x, x_cond], dim=1)
         out = self.unet(x, t, task_embed, **kwargs)
         return rearrange(out, 'b c f h w -> b (f c) h w')

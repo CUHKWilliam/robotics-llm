@@ -318,7 +318,7 @@ class SequentialDatasetv2_rgbd(Dataset):
 
         self.frame_skip = frameskip
 
-        sequence_dirs = glob(f"{path}/**/metaworld_dataset_2/*/*/", recursive=True)
+        sequence_dirs = glob(f"{path}/**/metaworld_dataset_2_test/*/*/*/", recursive=True)
         self.tasks = []
         self.sequences = []
         for seq_dir in sequence_dirs:
@@ -364,26 +364,35 @@ class SequentialDatasetv2_rgbd(Dataset):
 
         images = []
         depths = []
+        segms = []
         for i in range(len(samples)):
             sample = samples[i]
             data = np.load(sample)
             image = data[:, :, :3]
-            depth = data[:, :, 3:]
+            depth = data[:, :, 3:4]
+            segm = data[:, :, 4:5]
             images.append(image)
-            ## TODO:
-            depth[depth < -30.] *= 0.
-            depth -= depth.min()
-            depth /= depth.max()
-            depth *= 1.
             depths.append(depth)
+            segms.append(segm)
         images = self.transform(images) # [c f h w]
         depths = self.transform_depth(depths)
         depths = torch.from_numpy(np.stack(depths, axis=0)).unsqueeze(0)
-        images_depths = torch.cat([images, depths], dim=0)
-        x_cond = images_depths[:, 0] # first frame
-        x = rearrange(images_depths[:, 1:], "c f h w -> (f c) h w") # all other frames
+        segms = self.transform_depth(segms)
+        segms = torch.from_numpy(np.stack(segms, axis=0)).unsqueeze(0)
+        segms1 = (segms == 1).type(depths.dtype)
+        segms2 = (segms == 2).type(depths.dtype)
+        ## TODO:
+        low, high = -8., -1.5
+        depths[depths < low] = low
+        depths[depths > high] = high
+        depths -= low
+        depths /= (high - low)
+        
+        images_depth_segms = torch.cat([images, depths, segms1, segms2], dim=0)
+        x_cond = images_depth_segms[:, 0] # first frame
+        x = rearrange(images_depth_segms[:, 1:], "c f h w -> (f c) h w") # all other frames
         task = self.tasks[idx]
-        return x, x_cond, task
+        return x.float(), x_cond.float(), task
     
 
 class SequentialFlowDataset(Dataset):

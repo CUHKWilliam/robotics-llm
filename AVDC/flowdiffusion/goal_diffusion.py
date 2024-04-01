@@ -29,7 +29,7 @@ from pytorch_fid.fid_score import calculate_frechet_distance
 import matplotlib.pyplot as plt
 import numpy as np
 from minlora import add_lora, apply_to_lora, disable_lora, enable_lora, get_lora_params, merge_lora, name_is_lora, remove_lora, load_multiple_lora, select_lora
-
+import imageio
 
 __version__ = "0.0"
 
@@ -666,7 +666,7 @@ class GoalGaussianDiffusion(nn.Module):
 
         # predict and take gradient step
 
-        model_out = self.model(torch.cat([x, x_cond], dim=1), t, task_embed)
+        model_out = self.model(torch.cat([x.float(), x_cond.float()], dim=1), t, task_embed)
 
         if self.objective == 'pred_noise':
             target = noise
@@ -677,8 +677,10 @@ class GoalGaussianDiffusion(nn.Module):
             target = v
         else:
             raise ValueError(f'unknown objective {self.objective}')
-
         loss = self.loss_fn(model_out, target, reduction = 'none')
+        loss = loss.view(loss.size(0), -1, 6, loss.size(-2), loss.size(-1))
+        loss[:, :, 3, :, :] *= 10.
+        loss = loss.view(target.size())
         loss = reduce(loss, 'b ... -> b (...)', 'mean')
 
         loss = loss * extract(self.loss_weight, t, loss.shape)
@@ -810,9 +812,10 @@ class Trainer(object):
 
         train_params = list(get_lora_params(diffusion_model))
         for key, val in diffusion_model.named_parameters():
-            if 'input_blocks' in key or 'out' in key or 'output_blocks' in key:
+            if 'input_blocks' in key or 'out' in key or "output_blocks" in key:
                 train_params.append(val)
         # optimizer
+        
         parameters = [
             {"params": train_params},
         ]
@@ -1022,7 +1025,6 @@ class Trainer(object):
                 for _ in range(self.gradient_accumulate_every):
                     x, x_cond, goal = next(self.dl)
                     x, x_cond = x.to(device), x_cond.to(device)
-
                     goal_embed = self.encode_batch_text(goal)
                     ### zero whole goal_embed if p < self.cond_drop_chance
                     goal_embed = goal_embed * (torch.rand(goal_embed.shape[0], 1, 1, device = goal_embed.device) > self.cond_drop_chance).float()
@@ -1068,13 +1070,17 @@ class Trainer(object):
                                 task_embeds.append(self.encode_batch_text(label))
                             
                             with self.accelerator.autocast():
-                                all_xs_list = list(map(lambda n, c, e: self.ema.ema_model.sample(batch_size=n, x_cond=c, task_embed=e), batches, x_conds, task_embeds))
+                                all_xs_list = list(map(lambda n, c, e: self.ema.ema_model.sample(
+                                    batch_size=n, 
+                                    x_cond=c, 
+                                    task_embed=e), 
+                                    batches, x_conds, task_embeds))
                         
                         print_gpu_utilization()
                         
                         gt_xs = torch.cat(xs, dim = 0) # [batch_size, 3*n, 120, 160]
                         # make it [batchsize*n, 3, 120, 160]
-                        n_rows = gt_xs.shape[1] // 4
+                        n_rows = gt_xs.shape[1] // 6
                         gt_xs = rearrange(gt_xs, 'b (n c) h w -> b n c h w', n=n_rows)
                         ### save images
                         x_conds = torch.cat(x_conds, dim = 0).detach().cpu()
@@ -1084,10 +1090,24 @@ class Trainer(object):
 
                         gt_first = gt_xs[:, :1]
                         gt_last = gt_xs[:, -1:]
-                        gt_img_first, gt_depth_first = gt_first[:, :, :3], gt_first[:, :, 3:]
-                        gt_img_last, gt_depth_last = gt_last[:, :, :3], gt_last[:, :, 3:]
-                        gt_img_xs, gt_depth_xs = gt_xs[:, :, :3], gt_xs[:, :, 3:]
-                        all_img_xs, all_depth_xs = all_xs[:, :, :3], all_xs[:, :, 3:]
+                        gt_img_first, gt_depth_first, gt_segm1_first, gt_segm2_first = gt_first[:, :, :3], gt_first[:, :, 3:6], gt_first[:, :, -2], gt_first[:, :, -1]
+                        gt_img_last, gt_depth_last, gt_segm1_last, gt_segm2_last = gt_last[:, :, :3], gt_last[:, :, 3:6], gt_last[:, :, -2], gt_last[:, :, -1]
+                        gt_img_xs, gt_depth_xs, gt_segm1_xs, gt_segm2_xs = gt_xs[:, :, :3], gt_xs[:, :, 3:6], gt_xs[:, :, -2], gt_xs[:, :, -1]
+                        all_img_xs, all_depth_xs, all_segm1_xs, all_segm2_xs = all_xs[:, :, :3], all_xs[:, :, 3:6], all_xs[:, :, -2], all_xs[:, :, -1]
+                        
+                        all_img_xs = all_img_xs.permute((0, 1, 3, 4, 2)).contiguous()
+                        all_img_xs[all_segm1_xs > 0.8] = torch.tensor([1, 0, 0]).float()
+                        all_img_xs[all_segm2_xs > 0.8] = torch.tensor([0, 1, 0]).float()
+                        all_img_xs = all_img_xs.permute((0, 1, 4, 2, 3)).contiguous()
+
+                        gt_img_xs = gt_img_xs.permute((0, 1, 3, 4, 2)).contiguous()
+                        gt_img_xs[gt_segm1_xs > 0.8] = torch.tensor([1, 0, 0]).float()
+                        gt_img_xs[gt_segm2_xs > 0.8] = torch.tensor([0, 1, 0]).float()
+                        gt_img_xs = gt_img_xs.permute((0, 1, 4, 2, 3)).contiguous()
+
+                        gt_img_first, gt_img_last = gt_img_xs[:, :1, :, :, :], gt_img_xs[:, -1:, :, :, :]
+                        
+
                         if self.step == self.save_and_sample_every:
                             os.makedirs(str(self.results_folder / f'imgs'), exist_ok = True)
                             gt_img = torch.cat([gt_img_first, gt_img_last, gt_img_xs], dim=1)
@@ -1100,7 +1120,7 @@ class Trainer(object):
                         utils.save_image(pred_img, str(self.results_folder / f'imgs/outputs/sample-{milestone}.png'), nrow=n_rows+2)
                         pred_depth = torch.cat([gt_depth_first, gt_depth_last, all_depth_xs], dim=1)
                         pred_depth = rearrange(pred_depth, 'b n c h w -> (b n) c h w', n=n_rows+2)
-                        
+                        # import ipdb;ipdb.set_trace()
                         ## TODO: for vis
                         # import matplotlib.pyplot as plt
                         # cmat = np.array([[ 9.63268099e+01, -3.13378818e+02,  4.34104016e+01,
@@ -1109,18 +1129,38 @@ class Trainer(object):
                         #                 -2.25109256e+02],
                         #             [-6.80413817e-01, -6.80413817e-01,  2.72165527e-01,
                         #                 -1.18392004e+00]])
+                        # rgbs = []
+                        # depths = []
                         # for i in range(len(pred_depth)):
                         #     a_depth, a_img = pred_depth[i], pred_img[i]
                         #     pts_2d = torch.from_numpy(np.stack(np.meshgrid(np.arange(gt_img_first.size(-1)-1), np.arange(gt_img_first.size(-2)-1)), axis=-1))
                         #     pts_2d = pts_2d.view(-1, 2)
                         #     a_depth = a_depth[0]
+                            
                         #     pts = to_3d(pts_2d, a_depth, cmat)
-                        #     fig = plt.figure()
-                        #     ax = fig.add_subplot(projection='3d')
+                            
+                        #     a_depth_tmp = a_depth
+                        #     a_depth_tmp -= a_depth_tmp.min()
+                        #     a_depth_tmp /= a_depth.max()
+
+                        #     rgbs.append((a_depth_tmp.unsqueeze(-1).repeat(1, 1, 3).cpu().numpy() * 256).astype(np.uint8))
+                        #     depths.append((a_img[:, :-1, :-1].permute(1, 2, 0).cpu().numpy() * 256).astype(np.uint8))
                         #     colors = a_img[:, :-1, :-1].permute(1, 2, 0).reshape(-1, 3).cpu().numpy()
-                        #     ax.scatter(pts[:, 0], pts[:, 1], pts[:, 2], c=colors)
-                        #     plt.show()
-                        #     import ipdb;ipdb.set_trace()
+
+                        #     # ax = plt.axes(projection='3d')
+                        #     # ax.set_box_aspect((1, 1, 1))
+                        #     # ax.axes.set_xlim(-1.5, -1)
+                        #     # ax.scatter(pts[:, 0], pts[:, 1], pts[:, 2], c=colors, s=1)
+                        #     # plt.show()
+
+                        #     # import open3d as o3d
+                        #     # pcd = o3d.geometry.PointCloud()
+                        #     # pcd.points = o3d.utility.Vector3dVector(pts)
+                        #     # pcd.colors = o3d.utility.Vector3dVector(colors)
+                        #     # o3d.visualization.draw_geometries([pcd],)
+                        # imageio.mimsave("debug.mp4", rgbs)
+                        # imageio.mimsave("debug2.mp4", depths)
+                        # import ipdb;ipdb.set_trace()
                         ## TODO: end todo
 
                         self.save(milestone)

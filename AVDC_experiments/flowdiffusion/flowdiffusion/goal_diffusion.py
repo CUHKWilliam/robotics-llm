@@ -833,10 +833,13 @@ class Trainer(object):
         data = torch.load(str(self.results_folder / f'model-{milestone}.pt'), map_location=device)
 
         model = self.accelerator.unwrap_model(self.model)
-        model.load_state_dict(data['model'])
+        model.load_state_dict(data['model'],)
 
         self.step = data['step']
-        self.opt.load_state_dict(data['opt'])
+        try:
+            self.opt.load_state_dict(data['opt'])
+        except:
+            pass
         if self.accelerator.is_main_process:
             self.ema.load_state_dict(data["ema"])
 

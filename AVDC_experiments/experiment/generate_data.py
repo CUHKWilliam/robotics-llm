@@ -40,7 +40,8 @@ def run(args):
 
     n_exps = args.n_exps
     resolution = (320, 240)
-    cameras = ['corner',]
+    # cameras = ['corner', 'corner2', 'corner3']
+    cameras = ['corner']
 
     video_model = get_video_model(ckpts_dir=args.ckpt_dir, milestone=args.milestone)
     flow_model = get_flow_model()
@@ -88,32 +89,44 @@ def run(args):
             done = False
             images = []
             depths = []
+            segms = []
             while cnt2 < 500 and not done:
                 action = policy.get_action(obs)
                 next_obs, _, _, info = env.step(action)
                 obs = next_obs
                 if int(info['success']) == 1:
                     done = True
-                img, depth = env.render(camera_name='corner', depth=True, body_invisible=True)
+                data = env.render(camera_name=camera, depth=True, body_invisible=True, segmentation=True)                
+                img, depth = env.render(camera_name=camera, depth=True, body_invisible=True,)
                 img = np.stack(img, axis=0)
+                seg_img = np.zeros((img.shape[0], img.shape[1]))
+                seg_img[data[:, :, -1] == 31] = 1
+                seg_img[data[:, :, -1] == 33] = 2
+                segms.append(seg_img)
+                # colors = np.random.randint(low=0, high=255, size=(100, 3))
+                # seg_img = colors[data[:, :, -1]]
                 images.append(img)
                 depths.append(depth)
 
             if len(images) <= 500:
                 print("success")
-                SAVE_PATH = '/data/wltang/robotic-llm/AVDC/datasets/metaworld/metaworld_dataset_2'
+                SAVE_PATH = '/data/wltang/robotic-llm/AVDC/datasets/metaworld/metaworld_dataset_2_test'
                 save_path = SAVE_PATH
+                os.makedirs(save_path, exist_ok=True)
+                save_path = os.path.join(save_path, env_name.split("-v2")[0])
                 os.makedirs(save_path, exist_ok=True)
                 save_path = os.path.join(save_path, camera)
                 os.makedirs(save_path, exist_ok=True)
                 save_path = os.path.join(save_path, "{:03}".format(cnt))
                 os.makedirs(save_path, exist_ok=True)
                 for i in range(len(images)):
-                    image, depth = images[i], depths[i]
+                    image, depth, segm = images[i], depths[i], segms[i]
                     depth = np.expand_dims(depth, axis=-1)
-                    image_depth = np.concatenate([image, depth], axis=-1)
-                    np.save(os.path.join(save_path, "{:03}.npy".format(i)), image_depth)
+                    segm = np.expand_dims(segm, axis=-1)
+                    image_depth_segm = np.concatenate([image, depth, segm], axis=-1)
+                    np.save(os.path.join(save_path, "{:03}.npy".format(i)), image_depth_segm)
                 cnt += 1
+                # import ipdb;ipdb.set_trace()
 
 if __name__ == "__main__":
     parser = ArgumentParser()
