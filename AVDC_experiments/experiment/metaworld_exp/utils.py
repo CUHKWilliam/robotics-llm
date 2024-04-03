@@ -102,7 +102,7 @@ def collect_video_rgbd(init_obs, env, policy, camera_name='corner3', resolution=
         cameras = ['corner']
         camera_name = np.random.choice(cameras)
 
-    image, depth = env.render(depth=True, offscreen=True, camera_name=camera_name, resolution=resolution, body_invisible=True)
+    image, depth = env.render(depth=True, offscreen=True, camera_name=camera_name, resolution=resolution, body_invisible=False)
     images += [image]
     depths += [depth]
     
@@ -119,7 +119,7 @@ def collect_video_rgbd(init_obs, env, policy, camera_name='corner3', resolution=
             break
         if dd != 10 and not done:
             break
-        image, depth = env.render(depth=True, offscreen=True, camera_name=camera_name, resolution=resolution, body_invisible=True)
+        image, depth = env.render(depth=True, offscreen=True, camera_name=camera_name, resolution=resolution, body_invisible=False)
         images += [image]
         depths += [depth]
                 
