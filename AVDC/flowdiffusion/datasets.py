@@ -318,7 +318,7 @@ class SequentialDatasetv2_rgbd(Dataset):
 
         self.frame_skip = frameskip
 
-        sequence_dirs = glob(f"{path}/**/metaworld_dataset_2_test/*/*/*/", recursive=True)
+        sequence_dirs = glob(f"{path}/**/metaworld_dataset_all/*/*/*/", recursive=True)
         self.tasks = []
         self.sequences = []
         for seq_dir in sequence_dirs:

@@ -43,9 +43,9 @@ def run(args):
 
     n_exps = args.n_exps
     resolution = (320, 240)
-    # cameras = ['corner', 'corner2', 'corner3']
-    cameras = ['corner']
-    max_replans = 0
+    cameras = ['corner', 'corner2', 'corner3']
+    # cameras = ['corner']
+    max_replans = 10
 
     video_model = get_video_model_rgbd(ckpts_dir=args.ckpt_dir, milestone=args.milestone)
     flow_model = get_flow_model()
@@ -71,30 +71,38 @@ def run(args):
         rewards = []
         replans_counter = {i: 0 for i in range(max_replans + 1)}
         for seed in tqdm(range(n_exps)):
-            env = benchmark_env(seed=1)
-            
-            obs = env.reset()
-            policy = MyPolicy_CL_rgbd(env, env_name, camera, video_model, flow_model, max_replans=max_replans)
+            cnt_random = 0
+            if True:
+                env = benchmark_env(seed=seed)
+                
+                obs = env.reset()
+                policy = MyPolicy_CL_rgbd(env, env_name, camera, video_model, flow_model, max_replans=max_replans, resolution=resolution)
 
-            # os.makedirs(f'{result_root}/plans/{env_name}', exist_ok=True)
-            # imageio.mimsave(f'{result_root}/plans/{env_name}/{camera}_{seed}.mp4', images.transpose(0, 2, 3, 1))
+                # os.makedirs(f'{result_root}/plans/{env_name}', exist_ok=True)
+                # imageio.mimsave(f'{result_root}/plans/{env_name}/{camera}_{seed}.mp4', images.transpose(0, 2, 3, 1))
 
-            images, _, episode_return = collect_video_rgbd(obs, env, policy, camera_name=camera, resolution=resolution)
-            rewards.append(episode_return / len(images))
-            imageio.mimsave('debug.mp4', images)
-            import ipdb;ipdb.set_trace()
-            used_replans = max_replans - policy.replans
-            
-            ### save sample video
-            os.makedirs(f'{result_root}/videos/{env_name}', exist_ok=True)
-            imageio.mimsave(f'{result_root}/videos/{env_name}/{camera}_{seed}.mp4', images)
-            
-            print("test eplen: ", len(images))
-            if len(images) <= 500:
-                success += 1
-                replans_counter[used_replans] += 1
-                print("success, used replans: ", used_replans)
-        
+                images, _, _, episode_return = collect_video_rgbd(obs, env, policy, camera_name=camera, resolution=resolution)
+                rewards.append(episode_return / len(images))
+                imageio.mimsave('debug.mp4', images)
+                used_replans = max_replans - policy.replans
+                # import ipdb;ipdb.set_trace()
+                ### save sample video
+                os.makedirs(f'{result_root}/videos/{env_name}', exist_ok=True)
+                imageio.mimsave(f'{result_root}/videos/{env_name}/{camera}_{seed}.mp4', images)
+                
+                # print("test eplen: ", len(images))
+                # import ipdb;ipdb.set_trace()
+
+                if len(images) <= 500:
+                    success += 1
+                    replans_counter[used_replans] += 1
+                    print("success, used replans: ", used_replans)
+                    break
+                else:
+                    cnt_random += 1
+                    print("retry:{}".format(cnt_random))
+                # else:
+                    # import ipdb;ipdb.set_trace()
         rewards = rewards + [0] * (n_exps - len(rewards))
         reward_means.append(np.mean(rewards))
         reward_stds.append(np.std(rewards))
@@ -123,15 +131,15 @@ if __name__ == "__main__":
     parser.add_argument("--result_root", type=str, default="../results/results_AVDC_full")
     args = parser.parse_args()
 
-    try:
-        with open(f"{args.result_root}/result_dict.json", "r") as f:
-            result_dict = json.load(f)
-    except:
-        result_dict = {}
+    # try:
+    #     with open(f"{args.result_root}/result_dict.json", "r") as f:
+    #         result_dict = json.load(f)
+    # except:
+    #     result_dict = {}
 
-    assert args.env_name in name2maskid.keys()
-    if args.env_name in result_dict.keys():
-        print("already done")
-    else:
-        run(args)
+    # assert args.env_name in name2maskid.keys()
+    # if args.env_name in result_dict.keys():
+    #     print("already done")
+    # else:
+    run(args)
         

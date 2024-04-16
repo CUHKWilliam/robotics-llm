@@ -294,6 +294,7 @@ def get_transforms(seg, depth, cmat, flows=[], ransac_tries=100, ransac_threshol
     sampless = []
     samples_2d = sample_from_mask(seg, 500)
     sampless.append(samples_2d)
+    samples_2d = np.clip(samples_2d, a_max=[int(depth.shape[1]-2), int(depth.shape[0]-2)], a_min=[0,0]) 
     samples_3d = to_3d(samples_2d, depth, cmat)
     grasp = get_grasp(samples_2d, depth, cmat)
     # print(grasp.shape)

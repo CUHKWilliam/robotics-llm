@@ -40,8 +40,8 @@ def run(args):
 
     n_exps = args.n_exps
     resolution = (320, 240)
-    # cameras = ['corner', 'corner2', 'corner3']
-    cameras = ['corner']
+    cameras = ['corner', 'corner2', 'corner3']
+    # cameras = ['corner']
 
     video_model = get_video_model(ckpts_dir=args.ckpt_dir, milestone=args.milestone)
     flow_model = get_flow_model()
@@ -96,8 +96,8 @@ def run(args):
                 obs = next_obs
                 if int(info['success']) == 1:
                     done = True
-                data = env.render(camera_name=camera, depth=True, body_invisible=True, segmentation=True)                
-                img, depth = env.render(camera_name=camera, depth=True, body_invisible=True,)
+                data = env.render(camera_name=camera, depth=True, body_invisible=True, segmentation=True, resolution=resolution)                
+                img, depth = env.render(camera_name=camera, depth=True, body_invisible=True, resolution=resolution)
                 img = np.stack(img, axis=0)
                 seg_img = np.zeros((img.shape[0], img.shape[1]))
                 seg_img[data[:, :, -1] == 31] = 1
@@ -107,10 +107,10 @@ def run(args):
                 # seg_img = colors[data[:, :, -1]]
                 images.append(img)
                 depths.append(depth)
-
+                
             if len(images) <= 500:
                 print("success")
-                SAVE_PATH = '/data/wltang/robotic-llm/AVDC/datasets/metaworld/metaworld_dataset_2_test'
+                SAVE_PATH = '/data/wltang/robotic-llm/AVDC/datasets/metaworld/metaworld_dataset_all'
                 save_path = SAVE_PATH
                 os.makedirs(save_path, exist_ok=True)
                 save_path = os.path.join(save_path, env_name.split("-v2")[0])

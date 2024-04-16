@@ -94,18 +94,23 @@ def sample_n_frames(frames, n):
 def collect_video_rgbd(init_obs, env, policy, camera_name='corner3', resolution=(640, 480)):
     images = []
     depths = []
+    segms = []
     episode_return = 0
     done = False
     obs = init_obs
     if camera_name is None:
-        # cameras = ["corner3", "corner", "corner2"]
-        cameras = ['corner']
+        cameras = ["corner3", "corner", "corner2"]
+        # cameras = ['corner']
         camera_name = np.random.choice(cameras)
-
     image, depth = env.render(depth=True, offscreen=True, camera_name=camera_name, resolution=resolution, body_invisible=False)
+    data = env.render(camera_name=camera, depth=True, body_invisible=True, segmentation=True, resolution=resolution)
+
     images += [image]
     depths += [depth]
-    
+    segms += [seg_img]
+    seg_img = np.zeros((img.shape[0], img.shape[1]))
+    seg_img[data[:, :, -1] == 31] = 1
+    seg_img[data[:, :, -1] == 33] = 2
     dd = 10 ### collect a few more steps after done
     while dd:
         action = policy.get_action(obs)
@@ -119,11 +124,32 @@ def collect_video_rgbd(init_obs, env, policy, camera_name='corner3', resolution=
             break
         if dd != 10 and not done:
             break
+        subgoals = policy.subgoals
+        for i in range(len(subgoals)):
+            subgoal = subgoals[i]
+            # env.data.body_xpos[env.model.body_name2id('debug{}'.format(i))] = subgoal
+            env.model.body_pos[env.model.body_name2id('debug{}'.format(i))] = subgoal
+            # env.data.geom_xpos[env.model.body_name2id('debug{}'.format(i))] = subgoal
+        env.sim.forward()
         image, depth = env.render(depth=True, offscreen=True, camera_name=camera_name, resolution=resolution, body_invisible=False)
+        seg_img = np.zeros((img.shape[0], img.shape[1]))
+        seg_img[data[:, :, -1] == 31] = 1
+        seg_img[data[:, :, -1] == 33] = 2
+
+        # import matplotlib.pyplot as plt
+        # plt.imshow(image)
+        # plt.show()
+        # import ipdb;ipdb.set_trace()
+        for i in range(len(subgoals)):
+            subgoal = subgoals[i]
+            env.model.body_pos[env.model.body_name2id('debug{}'.format(i))
+                ] = np.array([-10,0,0])
+        env.sim.forward()
         images += [image]
         depths += [depth]
+        segms += [seg_img]
                 
-    return images, depths, episode_return
+    return images, depths, segms, episode_return
 
 
     

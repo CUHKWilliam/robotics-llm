@@ -1,4 +1,4 @@
-from goal_diffusion import GoalGaussianDiffusion, Trainer
+from goal_diffusion import GoalGaussianDiffusion, Trainer, GoalGaussianDiffusionFast
 from unet import UnetMW_rgbd as Unet_rgbd
 from transformers import CLIPTextModel, CLIPTokenizer
 from datasets import SequentialDatasetv2_rgbd
@@ -9,7 +9,7 @@ from minlora import add_lora, apply_to_lora, disable_lora, enable_lora, get_lora
 
 def main(args):
     valid_n = 1
-    sample_per_seq = 8
+    sample_per_seq = 18
     target_size = (128, 128)
 
     if args.mode == 'inference':
@@ -35,17 +35,30 @@ def main(args):
 
     # add_lora(unet)
 
+    ## TODO:
     diffusion = GoalGaussianDiffusion(
         channels=6*(sample_per_seq-1),
         model=unet,
         image_size=target_size,
         timesteps=100,
-        sampling_timesteps=3,
+        sampling_timesteps=100,
         loss_type='l2',
         objective='pred_v',
         beta_schedule = 'cosine',
         min_snr_loss_weight = True,
     )
+
+    # diffusion = GoalGaussianDiffusionFast(
+    #     channels=6*(sample_per_seq-1),
+    #     model=unet,
+    #     image_size=target_size,
+    #     timesteps=10,
+    #     sampling_timesteps=10,
+    #     loss_type='l2',
+    #     objective='pred_noise',
+    #     beta_schedule = 'cosine',
+    #     min_snr_loss_weight = True,
+    # )
 
     trainer = Trainer(
         diffusion_model=diffusion,
@@ -54,7 +67,7 @@ def main(args):
         train_set=train_set,
         valid_set=valid_set,
         train_lr=1e-4,
-        train_num_steps =400000,
+        train_num_steps =800000,
         save_and_sample_every =2000,
         ema_update_every = 10,
         ema_decay = 0.999,
@@ -62,7 +75,7 @@ def main(args):
         valid_batch_size =1,
         gradient_accumulate_every = 1,
         num_samples=valid_n, 
-        results_folder ='../results/mw-lora-2',
+        results_folder ='../results/mw-lora-2-all-fast',
         fp16 =True,
         amp=True,
     )
@@ -101,6 +114,7 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-m', '--mode', type=str, default='train', choices=['train', 'inference']) # set to 'inference' to generate samples
+    parser.add_argument('--local_rank', type=str, default='train', choices=['train', 'inference']) # set to 'inference' to generate samples
     parser.add_argument('-c', '--checkpoint_num', type=int, default=None) # set to checkpoint number to resume training or generate samples
     parser.add_argument('-p', '--inference_path', type=str, default=None) # set to path to generate samples
     parser.add_argument('-t', '--text', type=str, default=None) # set to text to generate samples
