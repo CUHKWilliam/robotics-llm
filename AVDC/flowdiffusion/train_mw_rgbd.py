@@ -1,4 +1,4 @@
-from goal_diffusion import GoalGaussianDiffusion, Trainer, GoalGaussianDiffusionFast
+from goal_diffusion import GoalGaussianDiffusion, Trainer
 from unet import UnetMW_rgbd as Unet_rgbd
 from transformers import CLIPTextModel, CLIPTokenizer
 from datasets import SequentialDatasetv2_rgbd
@@ -9,7 +9,8 @@ from minlora import add_lora, apply_to_lora, disable_lora, enable_lora, get_lora
 
 def main(args):
     valid_n = 1
-    sample_per_seq = 18
+    ## TODO: next
+    sample_per_seq = 8
     target_size = (128, 128)
 
     if args.mode == 'inference':
@@ -41,7 +42,7 @@ def main(args):
         model=unet,
         image_size=target_size,
         timesteps=100,
-        sampling_timesteps=100,
+        sampling_timesteps=10,
         loss_type='l2',
         objective='pred_v',
         beta_schedule = 'cosine',
@@ -75,9 +76,11 @@ def main(args):
         valid_batch_size =1,
         gradient_accumulate_every = 1,
         num_samples=valid_n, 
-        results_folder ='../results/mw-lora-2-all-fast',
+        results_folder = '../results/mw-lora-2-drawer-key', # '../results/mw-lora-2-key', # '../results/mw-lora-2-all',
         fp16 =True,
         amp=True,
+        ## TODO:
+        ft = True
     )
 
     if args.checkpoint_num is not None:

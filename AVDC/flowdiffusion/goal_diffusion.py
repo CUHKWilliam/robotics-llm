@@ -1048,7 +1048,7 @@ class GoalGaussianDiffusionFast(nn.Module):
             raise ValueError(f'unknown objective {self.objective}')
         loss = self.loss_fn(model_out, target, reduction = 'none')
         loss = loss.view(loss.size(0), -1, 6, loss.size(-2), loss.size(-1))
-        loss[:, :, 3, :, :] *= 10.
+        loss[:, :, 3, :, :] *= 50.
         loss = loss.view(target.size())
         loss = reduce(loss, 'b ... -> b (...)', 'mean')
 
@@ -1120,6 +1120,7 @@ class Trainer(object):
         calculate_fid = True,
         inception_block_idx = 2048, 
         cond_drop_chance=0.1,
+        ft=False,
     ):
         super().__init__()
 
@@ -1181,15 +1182,20 @@ class Trainer(object):
         self.dl = cycle(dl)
         self.valid_dl = DataLoader(self.valid_ds, batch_size = valid_batch_size, shuffle = False, pin_memory = True, num_workers = 0)
 
-        train_params = list(get_lora_params(diffusion_model))
+        ft_params = list(get_lora_params(diffusion_model))
         for key, val in diffusion_model.named_parameters():
             if 'input_blocks' in key or 'out' in key or "output_blocks" in key:
-                train_params.append(val)
+                ft_params.append(val)
         # optimizer
         
-        parameters = [
-            {"params": train_params},
-        ]
+        if ft:
+            parameters = [
+                {"params": ft_params},
+            ]
+        else:
+            parameters = diffusion_model.parameters()
+        ## TODO:
+        # self.opt = Adam(parameters, lr = train_lr, betas = adam_betas)
         self.opt = Adam(parameters, lr = train_lr, betas = adam_betas)
 
         # for logging results in a folder periodically
@@ -1304,8 +1310,7 @@ class Trainer(object):
 
                     goal_embed = self.encode_batch_text(goal)
                     ### zero whole goal_embed if p < self.cond_drop_chance
-                    goal_embed = goal_embed * (torch.rand(goal_embed.shape[0], 1, 1, device = goal_embed.device) > self.cond_drop_chance).float()
-
+                    # goal_embed = goal_embed * (torch.rand(goal_embed.shape[0], 1, 1, device = goal_embed.device) > self.cond_drop_chance).float()
 
                     with self.accelerator.autocast():
                         loss = self.model(x, x_cond, goal_embed)
@@ -1398,7 +1403,7 @@ class Trainer(object):
                     x, x_cond = x.to(device), x_cond.to(device)
                     goal_embed = self.encode_batch_text(goal)
                     ### zero whole goal_embed if p < self.cond_drop_chance
-                    goal_embed = goal_embed * (torch.rand(goal_embed.shape[0], 1, 1, device = goal_embed.device) > self.cond_drop_chance).float()
+                    # goal_embed = goal_embed * (torch.rand(goal_embed.shape[0], 1, 1, device = goal_embed.device) > self.cond_drop_chance).float()
 
 
                     with self.accelerator.autocast():
