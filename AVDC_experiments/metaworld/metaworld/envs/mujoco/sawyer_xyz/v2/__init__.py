@@ -17,6 +17,7 @@ from metaworld.envs.mujoco.sawyer_xyz.v2.sawyer_door_unlock_v2 import SawyerDoor
 from metaworld.envs.mujoco.sawyer_xyz.v2.sawyer_door_v2 import SawyerDoorEnvV2
 from metaworld.envs.mujoco.sawyer_xyz.v2.sawyer_drawer_close_v2 import SawyerDrawerCloseEnvV2
 from metaworld.envs.mujoco.sawyer_xyz.v2.sawyer_drawer_open_v2 import SawyerDrawerOpenEnvV2
+from metaworld.envs.mujoco.sawyer_xyz.v2.sawyer_drawer_with_bin_v2 import SawyerDrawerWithBinEnvV2
 from metaworld.envs.mujoco.sawyer_xyz.v2.sawyer_faucet_close_v2 import SawyerFaucetCloseEnvV2
 from metaworld.envs.mujoco.sawyer_xyz.v2.sawyer_faucet_open_v2 import SawyerFaucetOpenEnvV2
 from metaworld.envs.mujoco.sawyer_xyz.v2.sawyer_hammer_v2 import SawyerHammerEnvV2
@@ -70,6 +71,7 @@ __all__ = [
     'SawyerDoorEnvV2',
     'SawyerDrawerCloseEnvV2',
     'SawyerDrawerOpenEnvV2',
+    'SawyerDrawerWithBinV2',
     'SawyerFaucetCloseEnvV2',
     'SawyerFaucetOpenEnvV2',
     'SawyerHammerEnvV2',

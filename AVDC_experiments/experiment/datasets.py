@@ -2,7 +2,7 @@ from torch.utils.data import Dataset
 import os
 from glob import glob
 import torch
-from utils import get_paths, get_paths_from_dir
+from utils2 import get_paths, get_paths_from_dir
 from tqdm import tqdm
 from PIL import Image
 import numpy as np
@@ -394,24 +394,52 @@ class SequentialDatasetv2_rgbd(Dataset):
         task = self.tasks[idx]
         return x.float(), x_cond.float(), task
 
-        
+def sample_with_binear(fmap, kp):
+    max_x, max_y = fmap.shape[1]-1, fmap.shape[0]-1
+    x0, y0 = int(kp[0]), int(kp[1])
+    x1, y1 = x0+1, y0+1
+    x, y = kp[0]-x0, kp[1]-y0
+    fmap_x0y0 = fmap[y0, x0]
+    fmap_x1y0 = fmap[y0, x1]
+    fmap_x0y1 = fmap[y1, x0]
+    fmap_x1y1 = fmap[y1, x1]
+    fmap_y0 = fmap_x0y0 * (1-x) + fmap_x1y0 * x
+    fmap_y1 = fmap_x0y1 * (1-x) + fmap_x1y1 * x
+    feature = fmap_y0 * (1-y) + fmap_y1 * y
+    return feature
+
+def to_3d(points, depth, cmat):
+    points = points.reshape(-1, 2)
+    # depths = np.array([[sample_with_binear(depth, kp)] for kp in points])
+    # depths = np.array([[depth[int(p[1]), int(p[0])]] for p in points])
+    depths = np.expand_dims(depth, axis=-1)
+    points = np.concatenate([points, np.ones((points.shape[0], 1))], axis=1) * depths
+    points = np.concatenate([points, np.ones((points.shape[0], 1))], axis=1)
+    cmat = np.concatenate([cmat, np.array([[0, 0, 0, 1]])], axis=0)
+    points = np.dot(np.linalg.inv(cmat), points.T).T
+    points = points[:, :3]
+    return points
+
+
 class SequentialDatasetv2_rgbd_otf(Dataset):
-    def __init__(self, path="../datasets/valid", sample_per_seq=7, target_size=(128, 128), frameskip=None, randomcrop=False):
+    def __init__(self, path="../datasets/valid", sample_per_seq=7, target_size=(128, 128), frameskip=None, randomcrop=False, start_idx=None):
+        self.start_idx = start_idx
         print("Preparing dataset...")
         self.sample_per_seq = sample_per_seq
 
         self.frame_skip = frameskip
-
-        sequence_dirs = glob(f"{path}/metaworld/*/*/*/", recursive=True)
+        sequence_dirs = glob(f"{path}/*/*/*/1", recursive=True)
         self.tasks = []
         self.sequences = []
+        self.success = []
         for seq_dir in sequence_dirs:
-            task = seq_dir.split("/")[-5]
-            seq_id= int(seq_dir.split("/")[-2])
+            task = seq_dir.split("/")[-4]
+            # seq_id= int(seq_dir.split("/")[-2])
             # if task not in included_tasks or seq_id nwot in included_idx:
             #     continue
-            seq = sorted(glob(f"{seq_dir}*.npy"), key=lambda x: int(x.split("/")[-1].rstrip(".npy")))
+            seq = sorted(glob(f"{seq_dir}/*.npy"), key=lambda x: int(x.split("/")[-1].rstrip(".npy")))
             self.sequences.append(seq)
+            self.success.append(int(seq_dir.split('/')[-1]))
             self.tasks.append(seq_dir.split("/")[-4].replace("-", " "))
         self.transform = video_transforms.Compose([
             video_transforms.CenterCrop((128, 128)),
@@ -424,16 +452,85 @@ class SequentialDatasetv2_rgbd_otf(Dataset):
         ])
         print("Done")
 
-    def get_samples(self, idx):
+    def get_key_seq(self, seq, seq_num):
+        cmat = np.array([[ 9.63268099e+01, -3.13378818e+02,  4.34104016e+01,
+                            -4.54382771e+01],
+                        [-2.55555772e+01, -2.55555772e+01,  3.11293150e+02,
+                            -2.25109256e+02],
+                        [-6.80413817e-01, -6.80413817e-01,  2.72165527e-01,
+                            -1.18392004e+00]])
+        traj_2d = []
+        traj_depth = []
+        for i in range(len(seq)):
+            frame = seq[i]
+            data = np.load(frame)
+            depth, img, segm = data[..., 3:4], data[..., :3], data[..., -1]
+            if (segm == 1).sum() > 0 and (segm == 2).sum() > 0:
+                pt_2d1 = np.stack(np.where(segm == 1), axis=0).mean(1)
+                pt_2d2 = np.stack(np.where(segm == 2), axis=0).mean(1)
+                d = (depth[pt_2d1[0].astype(np.int64), pt_2d1[1].astype(np.int64)] + depth[pt_2d2[0].astype(np.int64), pt_2d2[1].astype(np.int64)]) / 2.
+                pt_2d = (pt_2d1 + pt_2d2) / 2.
+                pt_2d = pt_2d[::-1]
+                traj_depth.append(d)
+                traj_2d.append(pt_2d)
+        
+        traj_2d = np.stack(traj_2d, axis=0)
+        traj_depth = np.concatenate(traj_depth, axis=0)
+        traj_3d = to_3d(traj_2d, traj_depth, cmat)
+        if len(traj_3d) > seq_num:
+            deltas = [0]
+            samples = [0]
+            for i in range(1, len(traj_3d) - 1):
+                pt_3d0 = traj_3d[i - 1]
+                pt_3d2 = traj_3d[i + 1]
+                pt_3d1 = traj_3d[i]
+                vec1 = pt_3d1 - pt_3d0
+                vec2 = pt_3d2 - pt_3d1
+                vec1 = vec1 / np.linalg.norm(vec1)
+                vec2 = vec2 / np.linalg.norm(vec2)
+                delta = np.linalg.norm(vec2 - vec1)
+                deltas.append(delta)
+            # import matplotlib.pyplot as plt
+            # fig = plt.figure()
+            # ax = fig.add_subplot(projection='3d')
+            # ax.scatter(traj_3d[:, 0], traj_3d[:, 1], traj_3d[:, 2], c=np.repeat(np.clip(np.array(deltas)[:, None], a_min=0, a_max=1), axis=-1, repeats=3),  )
+            # plt.show()
+            # import ipdb;ipdb.set_trace()
+            deltas = np.array(deltas)
+            sort_idx = np.argsort(deltas)[::-1][:seq_num - 1]
+            for idx in range(len(sort_idx)):
+                samples.append(sort_idx[idx])
+            samples = sorted(samples)
+        else:
+            samples = []
+            for i in range(seq_num):
+                samples.append(int(i*(len(seq)-1)/(self.sample_per_seq-1)))
+        return samples
+
+    def get_samples(self, idx, start_idx=None):
         seq = self.sequences[idx]
+
+        ## TODO:
+        images = []
+        for i in range(len(seq)):
+            image = np.load(seq[i])[:, :, :3]
+            images.append(image.astype(np.uint8))
+        import imageio
+        # imageio.mimsave('debug.mp4', images)
+        # import ipdb;ipdb.set_trace()
+
         # if frameskip is not given, do uniform sampling betweeen a random frame and the last frame
         if self.frame_skip is None:
-            start_idx = random.randint(0, len(seq)-1)
+            ## TODO:
+            if start_idx is None:
+                start_idx = random.randint(0, len(seq)-1)
+            # start_idx = 0
             seq = seq[start_idx:]
             N = len(seq)
             samples = []
             for i in range(self.sample_per_seq-1):
                 samples.append(int(i*(N-1)/(self.sample_per_seq-1)))
+            # samples = self.get_key_seq(seq, self.sample_per_seq - 1)
             samples.append(N-1)
         else:
             start_idx = random.randint(0, len(seq)-1)
@@ -444,7 +541,7 @@ class SequentialDatasetv2_rgbd_otf(Dataset):
         return len(self.sequences)
     
     def __getitem__(self, idx):
-        samples = self.get_samples(idx)
+        samples = self.get_samples(idx, start_idx = self.start_idx)
 
         images = []
         depths = []

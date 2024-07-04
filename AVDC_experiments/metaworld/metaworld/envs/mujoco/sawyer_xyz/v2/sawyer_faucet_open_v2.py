@@ -48,9 +48,10 @@ class SawyerFaucetOpenEnvV2(SawyerXYZEnv):
     def evaluate_state(self, obs, action):
         (reward, tcp_to_obj, _, target_to_obj, object_grasped,
          in_place) = self.compute_reward(action, obs)
-
+        
+        print('target_to_obj:', target_to_obj)
         info = {
-            'success': float(target_to_obj <= 0.01),
+                'success': float(target_to_obj <= 0.05), ## TODO:0.01
             'near_object': float(tcp_to_obj <= 0.01),
             'grasp_success': 1.,
             'grasp_reward': object_grasped,

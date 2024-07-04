@@ -182,6 +182,7 @@ class SawyerXYZEnv(SawyerMocapBase, metaclass=abc.ABCMeta):
             self.mocap_high,
         )
         self.data.set_mocap_pos('mocap', new_mocap_pos)
+        ## TODO:
         self.data.set_mocap_quat('mocap', np.array([1, 0, 1, 0]))
 
     def discretize_goal_space(self, goals):

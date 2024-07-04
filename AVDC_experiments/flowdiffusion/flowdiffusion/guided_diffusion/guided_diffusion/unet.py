@@ -671,7 +671,6 @@ class UNetModel(nn.Module):
             label_emb = self.task_attnpool(y).mean(dim=1)
             emb = emb + label_emb
 
-
         h = x.type(self.dtype)
         for module in self.input_blocks:
             h = module(h, emb)

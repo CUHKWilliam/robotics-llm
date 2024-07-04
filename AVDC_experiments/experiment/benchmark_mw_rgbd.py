@@ -43,9 +43,9 @@ def run(args):
 
     n_exps = args.n_exps
     resolution = (320, 240)
-    cameras = ['corner', 'corner2', 'corner3']
-    # cameras = ['corner']
-    max_replans = 10
+    # cameras = ['corner', 'corner2', 'corner3']
+    cameras = ['corner3']
+    max_replans = 30
 
     video_model = get_video_model_rgbd(ckpts_dir=args.ckpt_dir, milestone=args.milestone)
     flow_model = get_flow_model()
@@ -72,37 +72,31 @@ def run(args):
         replans_counter = {i: 0 for i in range(max_replans + 1)}
         for seed in tqdm(range(n_exps)):
             cnt_random = 0
-            if True:
-                env = benchmark_env(seed=seed)
-                
-                obs = env.reset()
-                policy = MyPolicy_CL_rgbd(env, env_name, camera, video_model, flow_model, max_replans=max_replans, resolution=resolution)
+            env = benchmark_env(seed=seed)
+            
+            obs = env.reset()
+            policy = MyPolicy_CL_rgbd(env, env_name, camera, video_model, flow_model, max_replans=max_replans, resolution=resolution)
 
-                # os.makedirs(f'{result_root}/plans/{env_name}', exist_ok=True)
-                # imageio.mimsave(f'{result_root}/plans/{env_name}/{camera}_{seed}.mp4', images.transpose(0, 2, 3, 1))
+            # os.makedirs(f'{result_root}/plans/{env_name}', exist_ok=True)
+            # imageio.mimsave(f'{result_root}/plans/{env_name}/{camera}_{seed}.mp4', images.transpose(0, 2, 3, 1))
 
-                images, _, _, episode_return = collect_video_rgbd(obs, env, policy, camera_name=camera, resolution=resolution)
-                rewards.append(episode_return / len(images))
-                imageio.mimsave('debug.mp4', images)
-                used_replans = max_replans - policy.replans
-                # import ipdb;ipdb.set_trace()
-                ### save sample video
-                os.makedirs(f'{result_root}/videos/{env_name}', exist_ok=True)
-                imageio.mimsave(f'{result_root}/videos/{env_name}/{camera}_{seed}.mp4', images)
-                
-                # print("test eplen: ", len(images))
-                # import ipdb;ipdb.set_trace()
+            images, _, _, episode_return = collect_video_rgbd(obs, env, policy, camera_name=camera, resolution=resolution, show_traj=True)
+            rewards.append(episode_return / len(images))
+            imageio.mimsave('debug2.mp4', images)
+            used_replans = max_replans - policy.replans
+            ### save sample video
+            os.makedirs(f'{result_root}/videos/{env_name}', exist_ok=True)
+            imageio.mimsave(f'{result_root}/videos/{env_name}/{camera}_{seed}.mp4', images)
+            
+            # print("test eplen: ", len(images))
 
-                if len(images) <= 500:
-                    success += 1
-                    replans_counter[used_replans] += 1
-                    print("success, used replans: ", used_replans)
-                    break
-                else:
-                    cnt_random += 1
-                    print("retry:{}".format(cnt_random))
-                # else:
-                    # import ipdb;ipdb.set_trace()
+            if len(images) <= 500:
+                success += 1
+                replans_counter[used_replans] += 1
+                print("success, used replans: ", used_replans)
+                import ipdb;ipdb.set_trace()
+            else:
+                import ipdb;ipdb.set_trace()
         rewards = rewards + [0] * (n_exps - len(rewards))
         reward_means.append(np.mean(rewards))
         reward_stds.append(np.std(rewards))
@@ -127,10 +121,13 @@ if __name__ == "__main__":
     parser.add_argument("--env_name", type=str, default="door-open-v2-goal-observable")
     parser.add_argument("--n_exps", type=int, default=25)
     parser.add_argument("--ckpt_dir", type=str, default="../ckpts/metaworld")
-    parser.add_argument("--milestone", type=int, default=24)
+    parser.add_argument("--milestone", default=24)
     parser.add_argument("--result_root", type=str, default="../results/results_AVDC_full")
     args = parser.parse_args()
-
+    try:
+        args.milestone = int(args.milestone)
+    except:
+        args.milestone = str(args.milestone)
     # try:
     #     with open(f"{args.result_root}/result_dict.json", "r") as f:
     #         result_dict = json.load(f)

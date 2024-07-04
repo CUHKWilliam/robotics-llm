@@ -1,12 +1,12 @@
 from .goal_diffusion import GoalGaussianDiffusion, Trainer
-from .goal_diffusion_v1 import GoalGaussianDiffusion as GoalGaussianDiffusion_v1, Trainer as Trainer_v1
-from .goal_diffusion_policy import GoalGaussianDiffusion as GoalGaussianDiffusionPolicy, Trainer as TrainerPolicy
-from .diffusion_policy_baseline.unet import Unet1D, TransformerNet
+# from .goal_diffusion_v1 import GoalGaussianDiffusion as GoalGaussianDiffusion_v1, Trainer as Trainer_v1
+# from .goal_diffusion_policy import GoalGaussianDiffusion as GoalGaussianDiffusionPolicy, Trainer as TrainerPolicy
+# from .diffusion_policy_baseline.unet import Unet1D, TransformerNet
 from .unet import UnetMW as Unet
 from .unet import UnetMW_rgbd as Unet_rgbd
-from .unet import UnetMWFlow as Unet_flow
-from .unet import UnetThor as Unet_thor
-from .unet import UnetBridge as Unet_bridge
+# from .unet import UnetMWFlow as Unet_flow
+# from .unet import UnetThor as Unet_thor
+# from .unet import UnetBridge as Unet_bridge
 from transformers import CLIPTextModel, CLIPTokenizer
 from torchvision import transforms as T
 from einops import rearrange
@@ -188,7 +188,10 @@ def get_video_model_rgbd(ckpts_dir='../ckpts/metaworld', milestone=24, flow=Fals
     text_encoder.requires_grad_(False)
     text_encoder.eval()
     
+    # sample_per_seq = 8
+    ## TODO: next
     sample_per_seq = 8
+
     target_size = (128, 128)
     channels = 6 if not flow else 2
     # add_lora(unet)
@@ -196,14 +199,15 @@ def get_video_model_rgbd(ckpts_dir='../ckpts/metaworld', milestone=24, flow=Fals
         channels=channels*(sample_per_seq-1),
         model=unet,
         image_size=target_size,
-        timesteps=10,
-        sampling_timesteps=10,
+        timesteps=100,
+        sampling_timesteps=100,
         loss_type='l2',
         objective='pred_v',
         beta_schedule = 'cosine',
         min_snr_loss_weight = True,
     )
-    
+
+    # try:
     trainer = Trainer(
         diffusion_model=diffusion,
         tokenizer=tokenizer, 
@@ -214,8 +218,21 @@ def get_video_model_rgbd(ckpts_dir='../ckpts/metaworld', milestone=24, flow=Fals
         fp16 =True,
         amp=True,
     )
-    
     trainer.load(milestone)
+    # except:
+    #     add_lora(diffusion.cpu())
+    #     diffusion = diffusion.cuda()
+    #     trainer = Trainer(
+    #         diffusion_model=diffusion,
+    #         tokenizer=tokenizer, 
+    #         text_encoder=text_encoder,
+    #         train_set=[1],
+    #         valid_set=[1],
+    #         results_folder = ckpts_dir,
+    #         fp16 =True,
+    #         amp=True,
+    #     )
+    #     trainer.load(milestone)
     return trainer
 
 def get_video_model_thor(ckpts_dir='../ckpts/ithor', milestone=30):
@@ -347,6 +364,7 @@ def pred_video_rgbd(model, frame_0, task, flow=False):
     text = [task]
     image_depth_segm = torch.cat((image, depth, segm1, segm2), dim=-1)
     image_depth_segm = image_depth_segm.permute(0, 3, 1, 2).contiguous()
+
     preds = rearrange(model.sample(image_depth_segm.to(device), text).cpu().squeeze(0), "(f c) w h -> f c w h", c=channels)
     
     # pad the image back to original shape (both sides)
@@ -364,8 +382,8 @@ def pred_video_rgbd(model, frame_0, task, flow=False):
     depths = torch.nn.functional.pad(depths, (xpad, xpad, ypad, ypad))
     segms1 = torch.nn.functional.pad(segms1, (xpad, xpad, ypad, ypad))
     segms2 = torch.nn.functional.pad(segms2, (xpad, xpad, ypad, ypad))
-    return images.numpy().transpose(0, 2, 3, 1) * 128 if flow else (images.numpy()*255).astype('uint8'), depths, segms1, segms2
-
+    ret = images.numpy().transpose(0, 2, 3, 1) * 128 if flow else (images.numpy()*255).astype('uint8'), depths, segms1, segms2
+    return ret
 
 def pred_video_thor(model, frame_0, task):
     channels=3

@@ -121,6 +121,7 @@ class MujocoEnv(gym.Env, abc.ABC):
         return self.model.opt.timestep * self.frame_skip
 
     def do_simulation(self, ctrl, n_frames=None):
+        self.max_path_length=500
         if getattr(self, 'curr_path_length', 0) > self.max_path_length:
             raise ValueError('Maximum path length allowed by the benchmark has been exceeded')
         if self._did_see_sim_exception:

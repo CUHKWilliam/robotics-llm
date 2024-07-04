@@ -2,6 +2,8 @@ from mujoco_py.generated import const
 import numpy as np
 import cv2
 
+
+
 def get_robot_seg(env):
     seg = env.render(segmentation=True)
     img = np.zeros(seg.shape[:2], dtype=bool)
@@ -91,7 +93,7 @@ def sample_n_frames(frames, n):
 
 
 
-def collect_video_rgbd(init_obs, env, policy, camera_name='corner3', resolution=(640, 480)):
+def collect_video_rgbd(init_obs, env, policy, camera_name='corner3', resolution=(640, 480), body_invisible=False, show_traj=True):
     images = []
     depths = []
     segms = []
@@ -102,15 +104,15 @@ def collect_video_rgbd(init_obs, env, policy, camera_name='corner3', resolution=
         cameras = ["corner3", "corner", "corner2"]
         # cameras = ['corner']
         camera_name = np.random.choice(cameras)
-    image, depth = env.render(depth=True, offscreen=True, camera_name=camera_name, resolution=resolution, body_invisible=False)
-    data = env.render(camera_name=camera, depth=True, body_invisible=True, segmentation=True, resolution=resolution)
+    image, depth = env.render(depth=True, offscreen=True, camera_name=camera_name, resolution=resolution, body_invisible=body_invisible)
+    data = env.render(camera_name=camera_name, depth=True, body_invisible=True, segmentation=True, resolution=resolution)
 
     images += [image]
     depths += [depth]
+    seg_img = np.zeros((image.shape[0], image.shape[1]))
+    seg_img[data[:, :, -1] == 51] = 1
+    seg_img[data[:, :, -1] == 53] = 2
     segms += [seg_img]
-    seg_img = np.zeros((img.shape[0], img.shape[1]))
-    seg_img[data[:, :, -1] == 31] = 1
-    seg_img[data[:, :, -1] == 33] = 2
     dd = 10 ### collect a few more steps after done
     while dd:
         action = policy.get_action(obs)
@@ -124,27 +126,30 @@ def collect_video_rgbd(init_obs, env, policy, camera_name='corner3', resolution=
             break
         if dd != 10 and not done:
             break
-        subgoals = policy.subgoals
-        for i in range(len(subgoals)):
-            subgoal = subgoals[i]
-            # env.data.body_xpos[env.model.body_name2id('debug{}'.format(i))] = subgoal
-            env.model.body_pos[env.model.body_name2id('debug{}'.format(i))] = subgoal
-            # env.data.geom_xpos[env.model.body_name2id('debug{}'.format(i))] = subgoal
-        env.sim.forward()
-        image, depth = env.render(depth=True, offscreen=True, camera_name=camera_name, resolution=resolution, body_invisible=False)
-        seg_img = np.zeros((img.shape[0], img.shape[1]))
-        seg_img[data[:, :, -1] == 31] = 1
-        seg_img[data[:, :, -1] == 33] = 2
+        if show_traj:
+            subgoals = policy.subgoals
+            for i in range(len(subgoals)):
+                subgoal = subgoals[i]
+                # env.data.body_xpos[env.model.body_name2id('debug{}'.format(i))] = subgoal
+                env.model.body_pos[env.model.body_name2id('debug{}'.format(i))] = subgoal
+                # env.data.geom_xpos[env.model.body_name2id('debug{}'.format(i))] = subgoal
+            env.sim.forward()
+        image, depth = env.render(depth=True, offscreen=True, camera_name=camera_name, resolution=resolution, body_invisible=body_invisible)
+        seg_img = np.zeros((image.shape[0], image.shape[1]))
+        data = env.render(camera_name=camera_name, depth=True, body_invisible=True, segmentation=True, resolution=resolution)
+        seg_img[data[:, :, -1] == 51] = 1
+        seg_img[data[:, :, -1] == 53] = 2
 
         # import matplotlib.pyplot as plt
         # plt.imshow(image)
         # plt.show()
         # import ipdb;ipdb.set_trace()
-        for i in range(len(subgoals)):
-            subgoal = subgoals[i]
-            env.model.body_pos[env.model.body_name2id('debug{}'.format(i))
-                ] = np.array([-10,0,0])
-        env.sim.forward()
+        if show_traj:
+            for i in range(len(subgoals)):
+                subgoal = subgoals[i]
+                env.model.body_pos[env.model.body_name2id('debug{}'.format(i))
+                    ] = np.array([-10,0,0])
+            env.sim.forward()
         images += [image]
         depths += [depth]
         segms += [seg_img]
