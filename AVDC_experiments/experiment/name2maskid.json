@@ -1,7 +1,7 @@
 {
     "door-open-v2-goal-observable": [43],
     "door-close-v2-goal-observable": [43],
-    "basketball-v2-goal-observable": [-19],
+    "basketball-v2-goal-observable": [-9],
     "shelf-place-v2-goal-observable": [36],
     "button-press-v2-goal-observable": [43, 44],
     "button-press-topdown-v2-goal-observable": [43, 44],

@@ -12,6 +12,8 @@ import random
 from torchvideotransforms import video_transforms, volume_transforms
 from einops import rearrange
 # from vidaug import augmentors as va
+from lisa.model.llava.constants import (DEFAULT_IMAGE_TOKEN, IGNORE_INDEX,
+                                   IMAGE_TOKEN_INDEX)
 
 random.seed(0)
 
@@ -312,6 +314,84 @@ class SequentialDatasetv2(Dataset):
             print(e)
             return self.__getitem__(idx + 1 % self.__len__()) 
 
+import pickle
+class SequentialDatasetv2_rgbd_tfds2(Dataset):
+    def __init__(self, path="../datasets/valid", sample_per_seq=7, target_size=(128, 128), frameskip=None, randomcrop=False):
+        print("Preparing dataset...")
+        self.sample_per_seq = sample_per_seq
+
+        self.frame_skip = frameskip
+        
+        self.file_paths = []
+        for root, dirs, files in os.walk(path):
+            if 'processed' in root:
+                for file in files:
+                    if file.endswith('pkl'):
+                        self.file_paths.append(os.path.join(root, file))
+
+        if randomcrop:
+            self.transform = video_transforms.Compose([
+                video_transforms.CenterCrop((160, 160)),
+                video_transforms.RandomCrop((128, 128)),
+                video_transforms.Resize(target_size),
+                volume_transforms.ClipToTensor()
+            ])
+        else:
+            self.transform = video_transforms.Compose([
+                video_transforms.CenterCrop((128, 128)),
+                video_transforms.Resize(target_size),
+                volume_transforms.ClipToTensor()
+            ])
+        print("Done")
+    
+
+    def get_samples(self, idx):
+        file_path = self.file_paths[idx]
+        with open(file_path, 'rb') as f:
+            data = pickle.load(f)
+        instruction = str(data['steps'][0]['language_instruction'].numpy(), encoding='utf-8')
+        keys = list(data['steps'][0]['observation'].keys())
+        image_keys = []
+        image_indices = []
+        for key in keys:
+            if 'image' in key:
+                image_keys.append(key)
+                image_indices.append(int(key.split("-")[1]))
+        choice_idx = np.random.randint(0, len(image_indices) - 1)
+        image_key = image_keys[choice_idx]
+        image_idx = image_indices[choice_idx]
+        rgbs = []
+        depths = []
+        for i in range(len(data['steps'])):
+            rgbs.append(data['steps'][i]['observation'][image_key])
+            depths.append(data['steps'][i]['observation'][image_key])
+        rgbds = np.concatenate([rgbd, depths[:, None]], axis=-1)
+        seq = rgbds
+        # if frameskip is not given, do uniform sampling betweeen a random frame and the last frame
+        if self.frame_skip is None:
+            start_idx = random.randint(0,max(len(seq)-10), 0)
+            seq = seq[start_idx:]
+            N = len(seq)
+            samples = []
+            for i in range(self.sample_per_seq-1):
+                samples.append(int(i*(N-1)/(self.sample_per_seq-1)))
+            samples.append(N-1)
+        else:
+            start_idx = random.randint(0, len(seq)-1)
+            samples = [i if i < len(seq) else -1 for i in range(start_idx, start_idx+self.frame_skip*self.sample_per_seq, self.frame_skip)]
+        return [seq[i] for i in samples], instruction
+    
+    def __len__(self):
+        return len(self.file_paths)
+    
+    def __getitem__(self, idx):
+        samples, task = self.get_samples(idx)
+        images = self.transform([Image.open(s) for s in samples]) # [c f h w]
+        x_cond = images[:, 0] # first frame
+        x = rearrange(images[:, 1:], "c f h w -> (f c) h w") # all other frames
+        task = self.tasks[idx]
+        return x, x_cond, task
+        
 
 def sample_with_binear(fmap, kp):
     max_x, max_y = fmap.shape[1]-1, fmap.shape[0]-1
@@ -347,12 +427,12 @@ class SequentialDatasetv2_rgbd(Dataset):
         self.frame_skip = frameskip
 
         # sequence_dirs = glob(f"{path}/**/metaworld_dataset_all_key/*/*/*/", recursive=True)
-        sequence_dirs = glob(f"{path}/**/metaworld_dataset_drawer_key/*/*/*/", recursive=True)
+        sequence_dirs = glob(f"{path}/**/metaworld_dataset/*/*/*/", recursive=True)
         
         self.tasks = []
         self.full_task_names = []
         self.sequences = []
-        self.key_indices = []
+        # self.key_indices = []
         for seq_dir in sequence_dirs:
             task = seq_dir.split("/")[-4]
             seq_id= int(seq_dir.split("/")[-2])
@@ -362,10 +442,10 @@ class SequentialDatasetv2_rgbd(Dataset):
             self.sequences.append(seq)
             self.tasks.append(seq_dir.split("/")[-4].replace("-", " "))
             self.full_task_names.append(seq_dir.split('/')[-4])
-            import pickle
-            with open(os.path.join(seq_dir, 'key_indices.pkl'), 'rb') as f:
-                key_indice = pickle.load(f)
-            self.key_indices.append(key_indice)
+            # import pickle
+            # with open(os.path.join(seq_dir, 'key_indices.pkl'), 'rb') as f:
+                # key_indice = pickle.load(f)
+            # self.key_indices.append(key_indice)
         self.transform = video_transforms.Compose([
             video_transforms.CenterCrop((128, 128)),
             video_transforms.Resize(target_size),
@@ -379,89 +459,6 @@ class SequentialDatasetv2_rgbd(Dataset):
         import json
         with open('name2maskid.json', 'r') as f:
             self.name2maskid = json.load(f)
-    
-    '''
-    def get_key_frames(self, seq, task_name):
-        for i in range(len(seq)):
-            frame = seq[i]
-            data = np.load(frame)
-            depth, img, segm = data[..., 3:4], data[..., :3], data[..., -1]
-            maskids = self.name2maskid[task_name + "-v2-goal-observable"]
-            maskids = [x + 20 for x in maskids]
-            ## TODO:
-            maskid = maskids[0]
-            import ipdb;ipdb.set_trace()
-            pos = np.stack(np.where(segm == maskid), axis=0).mean(0)
-    '''
-    
-    def get_key_seq(self, seq, idx, start_idx):
-        seq2 = [seq[0]]
-        key_indices = np.array(self.key_indices[idx])
-        key_indices = key_indices[key_indices > start_idx]
-        for i in range(len(key_indices)):
-            seq2.append(seq[key_indices[i] - start_idx])
-        seq2.append(seq[-1])
-        return seq2
-
-
-    '''
-    def get_key_seq(self, seq, seq_num):
-        cmat = np.array([[ 9.63268099e+01, -3.13378818e+02,  4.34104016e+01,
-                            -4.54382771e+01],
-                        [-2.55555772e+01, -2.55555772e+01,  3.11293150e+02,
-                            -2.25109256e+02],
-                        [-6.80413817e-01, -6.80413817e-01,  2.72165527e-01,
-                            -1.18392004e+00]])
-        traj_2d = []
-        traj_depth = []
-        for i in range(len(seq)):
-            frame = seq[i]
-            data = np.load(frame)
-            depth, img, segm = data[..., 3:4], data[..., :3], data[..., -1]
-            if (segm == 1).sum() > 0 and (segm == 2).sum() > 0:
-                pt_2d1 = np.stack(np.where(segm == 1), axis=0).mean(1)
-                pt_2d2 = np.stack(np.where(segm == 2), axis=0).mean(1)
-                d = (depth[pt_2d1[0].astype(np.int64), pt_2d1[1].astype(np.int64)] + depth[pt_2d2[0].astype(np.int64), pt_2d2[1].astype(np.int64)]) / 2.
-                pt_2d = (pt_2d1 + pt_2d2) / 2.
-                pt_2d = pt_2d[::-1]
-                traj_depth.append(d)
-                traj_2d.append(pt_2d)
-        
-        traj_2d = np.stack(traj_2d, axis=0)
-        traj_depth = np.concatenate(traj_depth, axis=0)
-        traj_3d = to_3d(traj_2d, traj_depth, cmat)
-        if len(traj_3d) > seq_num:
-            deltas = [0]
-            samples = [0]
-            for i in range(1, len(traj_3d) - 1):
-                pt_3d0 = traj_3d[i - 1]
-                pt_3d2 = traj_3d[i + 1]
-                pt_3d1 = traj_3d[i]
-                vec1 = pt_3d1 - pt_3d0
-                vec2 = pt_3d2 - pt_3d1
-                vec1 = vec1 / np.linalg.norm(vec1)
-                vec2 = vec2 / np.linalg.norm(vec2)
-                delta = np.linalg.norm(vec2 - vec1)
-                deltas.append(delta)
-            deltas.append(0)
-            # import matplotlib.pyplot as plt
-            # fig = plt.figure()
-            # ax = fig.add_subplot(projection='3d')
-            # ax.scatter(traj_3d[:, 0], traj_3d[:, 1], traj_3d[:, 2], c=np.repeat(np.clip(np.array(deltas)[:, None], a_min=0, a_max=1), axis=-1, repeats=3),  )
-            # plt.show()
-            # import ipdb;ipdb.set_trace()
-            deltas = np.array(deltas)
-            sort_idx = np.argsort(deltas)[::-1][:seq_num - 1]
-            for idx in range(len(sort_idx)):
-                samples.append(sort_idx[idx])
-            samples = sorted(samples)
-        else:
-            samples = []
-            for i in range(seq_num):
-                samples.append(int(i*(len(seq)-1)/(self.sample_per_seq-1)))
-        return samples
-    '''
-
 
     ## TODO: next
     def get_samples(self, idx, task_name):
@@ -469,15 +466,8 @@ class SequentialDatasetv2_rgbd(Dataset):
         # if frameskip is not given, do uniform sampling betweeen a random frame and the last frame
         # if self.frame_skip is None:
         if True:
-            ## TODO:
-            if np.random.rand() < 0.5:
-                start_idx = random.randint(0, (len(seq)-1) // 10)
-            else:
-                start_idx = random.randint(0, len(seq) - 5)
-            # start_idx = 0
+            start_idx = random.randint(0, max(0, len(seq) - 2))
             seq = seq[start_idx:]
-            ## TODO:
-            seq = self.get_key_seq(seq, idx, start_idx)
             N = len(seq)
             samples = [0]
             for i in range(self.sample_per_seq-2):
@@ -487,14 +477,6 @@ class SequentialDatasetv2_rgbd(Dataset):
             start_idx = random.randint(0, len(seq)-1)
             samples = [i if i < len(seq) else -1 for i in range(start_idx, start_idx+self.frame_skip*self.sample_per_seq, self.frame_skip)]
         return [seq[i] for i in samples]
-    
-    '''
-    def get_samples(self, idx):
-        seq = self.sequences[idx]
-        start_idx = random.randint(0, len(seq) - 1 - 5)
-        samples = [start_idx, start_idx + 5, len(seq) - 1]
-        return [seq[i] for i in samples]
-    '''
 
     def __len__(self):
         return len(self.sequences)
@@ -510,7 +492,8 @@ class SequentialDatasetv2_rgbd(Dataset):
             data = np.load(sample)
             image = data[:, :, :3]
             depth = data[:, :, 3:4]
-            segm = data[:, :, 4:5]
+            # segm = data[:, :, 4:5]
+            segm = np.zeros((data.shape[0], data.shape[1], 2))
             images.append(image)
             depths.append(depth)
             segms.append(segm)
@@ -527,10 +510,10 @@ class SequentialDatasetv2_rgbd(Dataset):
         depths[depths > high] = high
         depths -= low
         depths /= (high - low)
-        
-        images_depth_segms = torch.cat([images, depths, segms1, segms2], dim=0)
-        x_cond = images_depth_segms[:, 0] # first frame
-        x = rearrange(images_depth_segms[:, 1:], "c f h w -> (f c) h w") # all other frames
+
+        images_depth = torch.cat([images, depths, segms[0].permute(3, 0, 1, 2)], dim=0)
+        x_cond = images_depth[:, 0] # first frame
+        x = rearrange(images_depth[:, 1:], "c f h w -> (f c) h w") # all other frames
         task = self.tasks[idx]
         return x.float(), x_cond.float(), task
     
@@ -658,3 +641,187 @@ if __name__ == "__main__":
     print(x_cond.shape)
     print(task)
 
+import sys
+from transformers import AutoTokenizer, BitsAndBytesConfig, CLIPImageProcessor
+from lisa.model.segment_anything.utils.transforms import ResizeLongestSide
+import torch.nn.functional as F
+from lisa.model.llava import conversation as conversation_lib
+
+class SequentialDatasetv2_contact_detection(Dataset):
+    def __init__(self, 
+                 path="../datasets/valid", 
+                 sample_per_seq=7, 
+                 target_size=128, 
+                 frameskip=None, 
+                 randomcrop=False,
+                 precision='fp32',
+                 vision_tower=None,
+                 inference=False):
+        print("Preparing dataset...")
+        self.sample_per_seq = sample_per_seq
+
+        self.frame_skip = frameskip
+
+        # sequence_dirs = glob(f"{path}/**/metaworld_dataset_all_key/*/*/*/", recursive=True)
+        sequence_dirs = glob(f"{path}/**/metaworld_dataset_basketball/*/*/*/", recursive=True)
+        
+        self.tasks = []
+        self.full_task_names = []
+        self.sequences = []
+        # self.key_indices = []
+        for seq_dir in sequence_dirs:
+            task = seq_dir.split("/")[-4]
+            seq_id= int(seq_dir.split("/")[-2])
+            # if task not in included_tasks or seq_id not in included_idx:
+            #     continue
+            seq = sorted(glob(f"{seq_dir}*.npy"), key=lambda x: int(x.split("/")[-1].rstrip(".npy")))
+            self.sequences.append(seq)
+            self.tasks.append(seq_dir.split("/")[-4].replace("-", " "))
+            self.full_task_names.append(seq_dir.split('/')[-4])
+            # import pickle
+            # with open(os.path.join(seq_dir, 'key_indices.pkl'), 'rb') as f:
+                # key_indice = pickle.load(f)
+            # self.key_indices.append(key_indice)
+        import json
+        with open('name2maskid.json', 'r') as f:
+            self.name2maskid = json.load(f)
+        self.clip_image_processor = CLIPImageProcessor.from_pretrained(vision_tower)
+        self.transform = ResizeLongestSide(target_size)
+        self.precision = precision
+        self.inference = inference
+
+    ## TODO: next
+    def get_samples(self, idx, task_name):
+        seq = self.sequences[idx]
+        return seq
+
+    def __len__(self):
+        return len(self.sequences)
+    
+    def preprocess(
+        self,
+        x,
+        pixel_mean=torch.Tensor([123.675, 116.28, 103.53]).view(-1, 1, 1),
+        pixel_std=torch.Tensor([58.395, 57.12, 57.375]).view(-1, 1, 1),
+        img_size=1024,
+    ) -> torch.Tensor:
+        """Normalize pixel values and pad to a square input."""
+        # Normalize colors
+        x = (x - pixel_mean) / pixel_std
+        # Pad
+        h, w = x.shape[-2:]
+        padh = img_size - h
+        padw = img_size - w
+        x = F.pad(x, (0, padw, 0, padh))
+        return x
+    
+    def preprocess_mask(
+        self,
+        x,
+        pixel_mean=torch.Tensor([123.675, 116.28, 103.53]).view(-1, 1, 1),
+        pixel_std=torch.Tensor([58.395, 57.12, 57.375]).view(-1, 1, 1),
+        img_size=1024,
+    ) -> torch.Tensor:
+        """Normalize pixel values and pad to a square input."""
+        # Normalize colors
+        # Pad
+        h, w = x.shape[-2:]
+        padh = img_size - h
+        padw = img_size - w
+        x = F.pad(x, (0, padw, 0, padh))
+        return x
+
+
+    def preprocess_mask(
+        self,
+        x,
+        pixel_mean=torch.Tensor([123.675, 116.28, 103.53]).view(-1, 1, 1),
+        pixel_std=torch.Tensor([58.395, 57.12, 57.375]).view(-1, 1, 1),
+        img_size=1024,
+    ) -> torch.Tensor:
+        """Normalize pixel values and pad to a square input."""
+        # Pad
+        h, w = x.shape[-2:]
+        padh = img_size - h
+        padw = img_size - w
+        x = F.pad(x, (0, padw, 0, padh))
+        return x
+    
+    def __getitem__(self, idx):
+        samples = self.get_samples(idx, self.full_task_names[idx])
+        images = []
+        segms = []
+        task = self.tasks[idx]
+        image_clips = []
+        image_paths = []
+        for i in range(len(samples)):
+            sample = samples[i]
+            image_paths.append(sample)
+            data = np.load(sample)
+            image = data[:, :, :3].astype(np.uint8)
+            image_clip = (self.clip_image_processor.preprocess(image, return_tensors="pt")["pixel_values"][0].unsqueeze(0).cuda())
+            if self.precision == "bf16":
+                image_clip = image_clip.bfloat16()
+            elif self.precision == "fp16":
+                image_clip = image_clip.half()
+            else:
+                image_clip = image_clip.float()
+            image = self.transform.apply_image(image)
+            resize = image.shape[:2]
+            image = (self.preprocess(torch.from_numpy(image).permute(2, 0, 1).contiguous()).unsqueeze(0).cuda())
+            if self.precision == "bf16":
+                image = image.bfloat16()
+            elif self.precision == "fp16":
+                image = image.half()
+            else:
+                image = image.float()
+            segm = data[:, :, 4:5]
+            mask_id = self.name2maskid['-'.join(task.split(" ")) + "-v2-goal-observable"]
+            mask_id = [a_mask_id + 20 for a_mask_id in mask_id]
+            segm_mask = np.zeros_like(segm).astype(np.bool_)
+            for a_mask_id in mask_id:
+                segm_mask = np.logical_or(segm_mask, (segm == a_mask_id).astype(np.bool_)).astype(np.float32)
+            segm_mask = self.transform.apply_image(segm_mask)
+            images.append(image)
+            image_clips.append(image_clip)
+            segms.append(segm_mask)
+        idx = np.random.randint(low=0, high=len(images) - 1, size=(1,))[0]
+        image, segm, image_clip = images[idx], segms[idx], image_clips[idx]
+
+        ## TODO: for vis
+        # tmp = image[0].permute(1, 2, 0)
+        # tmp -= tmp.min()
+        # tmp /= tmp.max()
+        # import cv2
+        # cv2.imwrite('debug.png', (tmp.float()  * 255).detach().cpu().numpy().astype(np.uint8))
+        # cv2.imwrite('debug2.png', (segm_mask[0] * 255).detach().cpu().numpy().astype(np.uint8))
+        # import ipdb;ipdb.set_trace()
+
+        image_path = image_paths[idx]
+
+        masks = torch.from_numpy(np.expand_dims(segm, axis=0)).float()
+        label = segm
+
+        conversations = []
+        conv = conversation_lib.default_conversation.copy()
+        conv.messages = []
+
+        text = "Where should I grasp if I need to conduct task {} ? Please output segmentation mask.".format(task)
+        questions = [DEFAULT_IMAGE_TOKEN + "\n" + text]
+        conv.append_message(conv.roles[0], questions[0])
+        conv.append_message(conv.roles[1], "It is [SEG].")
+        conversations.append(conv.get_prompt())
+        sampled_classes = "grasp area"
+        return (
+            image_path,
+            image[0],
+            image_clip[0],
+            conversations,
+            masks,
+            label,
+            resize,
+            questions,
+            sampled_classes,
+            self.inference
+        )
+    

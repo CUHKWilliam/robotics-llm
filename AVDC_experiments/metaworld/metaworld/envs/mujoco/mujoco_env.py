@@ -148,7 +148,7 @@ class MujocoEnv(gym.Env, abc.ABC):
             invisible_ids = []
             rgba = self.model.geom_rgba.copy() 
             for name in self.model.body_names:
-                if 'pad' in name or 'claw' in name or 'hand' in name or ('right' in name and 'right_l1_2' not in name) or 'screen' in name or 'head' in name:
+                if  'screen' in name or 'pad' in name or 'claw' in name or 'hand' in name or 'right' in name or 'screen' in name or 'head' in name:
                     invisible_ids.append(self.model.body_name2id(name))
             for id in invisible_ids:
                 self.model.geom_rgba[id] = np.array([0,0,0,0])

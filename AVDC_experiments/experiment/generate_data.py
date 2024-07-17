@@ -78,10 +78,10 @@ def run(args):
 
     n_exps = args.n_exps
     resolution = (320, 240)
-    # cameras = ['corner', 'corner2', 'corner3']
-    cameras = ['corner3']
+    cameras = ['corner', 'corner2', 'corner3']
+    # cameras = ['corner3']
 
-    video_model = get_video_model(ckpts_dir=args.ckpt_dir, milestone=args.milestone)
+    # video_model = get_video_model(ckpts_dir=args.ckpt_dir, milestone=args.milestone)
     flow_model = get_flow_model()
 
     env_name = args.env_name
@@ -90,34 +90,6 @@ def run(args):
     for camera in cameras:
         cnt = 0
         for seed in tqdm(range(n_exps)):
-            # try:
-            #     env = benchmark_env(seed=seed)
-                
-            #     obs = env.reset()
-            #     # policy = MyPolicy_CL(env, env_name, camera, video_model, flow_model, max_replans=5)
-            #     policy = get_policy(env_name)
-
-            #     # images, depths, episode_return = collect_video(obs, env, policy, camera_name=camera, resolution=resolution)
-            #     next_obs, _, _, _, info = env.step()
-
-            #     if len(images) <= 500:
-            #         print("success")
-            #         SAVE_PATH = '/data/wltang/robotic-llm/AVDC/datasets/metaworld/metaworld_dataset_2'
-            #         save_path = SAVE_PATH
-            #         os.makedirs(save_path, exist_ok=True)
-            #         save_path = os.path.join(save_path, camera)
-            #         os.makedirs(save_path, exist_ok=True)
-            #         save_path = os.path.join(save_path, "{:03}".format(cnt))
-            #         os.makedirs(save_path, exist_ok=True)
-            #         for i in range(len(images)):
-            #             image, depth = images[i], depths[i]
-            #             depth = np.expand_dims(depth, axis=-1)
-            #             image_depth = np.concatenate([image, depth], axis=-1)
-            #             np.save(os.path.join(save_path, "{:03}.npy".format(i)), image_depth)
-            #         cnt += 1
-            # except:
-            #     print('error')
-
 
             env = benchmark_env(seed=seed)
             obs = env.reset()
@@ -126,8 +98,10 @@ def run(args):
             done = False
             images = []
             depths = []
-            segms = []
+            image_segms  =[]
+            # segms = []
             all_segm_indices = []
+            previous_image = None
             while cnt2 < 500 and not done:
                 action = policy.get_action(obs)
                 next_obs, _, _, info = env.step(action)
@@ -136,36 +110,39 @@ def run(args):
                     done = True
                 data = env.render(camera_name=camera, depth=True, body_invisible=True, segmentation=True, resolution=resolution)               
                 ## TODO: instance paining
-                # '''
+                #'''
                 seg = data[:, :, 1]
                 seg_ids = np.unique(seg)
                 seg_img = np.zeros((seg.shape[0], seg.shape[1], 3))
                 for seg_id in seg_ids:
+                    seg_id = 58
                     if seg_id == -1:
                         continue
                     seg_img[seg == seg_id] = np.array([1, 0, 0]) * seg_id
                 seg_img = seg_img.astype(np.uint8)
-                cv2.imwrite('debug.png', seg_img)
+                cv2.imwrite('debug.png', (seg_img * 255))
                 import ipdb;ipdb.set_trace()
-                # '''
+                #'''
                 ## TODO: end
                 img, depth = env.render(camera_name=camera, depth=True, body_invisible=True, resolution=resolution)
                 img = np.stack(img, axis=0)
-                seg_img = np.zeros((img.shape[0], img.shape[1]))
-                data[:, :, -1]
-                seg_img[data[:, :, -1] == 51] = 1
-                seg_img[data[:, :, -1] == 53] = 2
-                segms.append(seg_img)
+                # seg_img = np.zeros((img.shape[0], img.shape[1]))
+                # seg_img[data[:, :, -1] == 51] = 1
+                # seg_img[data[:, :, -1] == 53] = 2
+                # segms.append(seg_img)
                 # colors = np.random.randint(low=0, high=255, size=(100, 3))
                 # seg_img = colors[data[:, :, -1]]
-                images.append(img)
-                depths.append(depth)
-                all_segm_indices.append(data[:, :, -1])
+                if previous_image is None or np.linalg.norm((img - previous_image).reshape(-1, 3), axis=-1).mean() > 0.1:
+                    images.append(img)
+                    depths.append(depth)
+                    image_segms.append(data[:, :, -1])
+                    previous_image = img
+                    # all_segm_indices.append(data[:, :, -1])
                 
-            if len(images) <= 2000:
+            if len(images) <= 500:
                 imageio.mimsave('debug.mp4', images)
                 print("success")
-                SAVE_PATH = '/data/wltang/robotic-llm/AVDC/datasets/metaworld/metaworld_dataset_drawer_key'
+                SAVE_PATH = '/media/msc-auto/HDD/wltang/robotics-llm/AVDC/datasets/metaworld/metaworld_dataset'
                 # SAVE_PATH = './tmp'
                 save_path = SAVE_PATH
                 os.makedirs(save_path, exist_ok=True)
@@ -175,16 +152,19 @@ def run(args):
                 os.makedirs(save_path, exist_ok=True)
                 save_path = os.path.join(save_path, "{:03}".format(cnt))
                 os.makedirs(save_path, exist_ok=True)
-                indices = get_key_indices(all_segm_indices, env_name)
+                # indices = get_key_indices(all_segm_indices, env_name)
                 for i in range(len(images)):
-                    image, depth, segm = images[i], depths[i], segms[i]
+                    # image, depth, segm = images[i], depths[i], segms[i]
+                    image, depth, image_segm = images[i], depths[i], image_segms[i]
                     depth = np.expand_dims(depth, axis=-1)
-                    segm = np.expand_dims(segm, axis=-1)
-                    image_depth_segm = np.concatenate([image, depth, segm], axis=-1)
-                    np.save(os.path.join(save_path, "{:03}.npy".format(i)), image_depth_segm)
-                import pickle
-                with open(os.path.join(save_path, 'key_indices.pkl'), 'wb') as f:
-                    pickle.dump(indices, f)
+                    # segm = np.expand_dims(segm, axis=-1)
+                    # image_depth_segm = np.concatenate([image, depth, segm], axis=-1)
+                    image_segm = np.expand_dims(image_segm, axis=-1)
+                    image_depth = np.concatenate([image, depth, image_segm], axis=-1)
+                    np.save(os.path.join(save_path, "{:03}.npy".format(i)), image_depth)
+                # import pickle
+                # with open(os.path.join(save_path, 'key_indices.pkl'), 'wb') as f:
+                #     pickle.dump(indices, f)
                 
                 cnt += 1
                 # import ipdb;ipdb.set_trace()

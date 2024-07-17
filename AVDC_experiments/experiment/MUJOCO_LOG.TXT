@@ -1,0 +1,9 @@
+Tue Jul  9 14:44:46 2024
+ERROR: Offscreen framebuffer is not complete, error 0x8cdd
+
+Tue Jul  9 14:50:29 2024
+ERROR: Offscreen framebuffer is not complete, error 0x8cdd
+
+Tue Jul  9 14:53:05 2024
+ERROR: Offscreen framebuffer is not complete, error 0x8cdd
+

@@ -15,6 +15,7 @@ from metaworld.envs.mujoco.sawyer_xyz.v2.sawyer_door_close_v2 import SawyerDoorC
 from metaworld.envs.mujoco.sawyer_xyz.v2.sawyer_door_lock_v2 import SawyerDoorLockEnvV2
 from metaworld.envs.mujoco.sawyer_xyz.v2.sawyer_door_unlock_v2 import SawyerDoorUnlockEnvV2
 from metaworld.envs.mujoco.sawyer_xyz.v2.sawyer_door_v2 import SawyerDoorEnvV2
+from metaworld.envs.mujoco.sawyer_xyz.v2.sawyer_door_bi_franka_v2 import SawyerDoorBiFrankaEnvV2
 from metaworld.envs.mujoco.sawyer_xyz.v2.sawyer_drawer_close_v2 import SawyerDrawerCloseEnvV2
 from metaworld.envs.mujoco.sawyer_xyz.v2.sawyer_drawer_open_v2 import SawyerDrawerOpenEnvV2
 from metaworld.envs.mujoco.sawyer_xyz.v2.sawyer_drawer_with_bin_v2 import SawyerDrawerWithBinEnvV2

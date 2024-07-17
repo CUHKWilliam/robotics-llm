@@ -155,4 +155,3 @@ class UnetThor(nn.Module):
         out = self.unet(x, t, task_embed, **kwargs)
         return rearrange(out, 'b c f h w -> b (f c) h w')
     
-

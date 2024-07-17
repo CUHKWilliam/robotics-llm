@@ -45,7 +45,7 @@ def run(args):
     resolution = (320, 240)
     # cameras = ['corner', 'corner2', 'corner3']
     cameras = ['corner3']
-    max_replans = 30
+    max_replans = 10
 
     video_model = get_video_model_rgbd(ckpts_dir=args.ckpt_dir, milestone=args.milestone)
     flow_model = get_flow_model()
@@ -59,7 +59,6 @@ def run(args):
 
     env_name = args.env_name
     print(env_name)
-    seg_ids = name2maskid[env_name]
     benchmark_env = env_dict[env_name]
 
     succes_rates = []
@@ -69,7 +68,7 @@ def run(args):
     for camera in cameras:
         success = 0
         rewards = []
-        replans_counter = {i: 0 for i in range(max_replans + 1)}
+        replans_counter = {i: 0 for i in range(100)}
         for seed in tqdm(range(n_exps)):
             cnt_random = 0
             env = benchmark_env(seed=seed)
@@ -79,10 +78,10 @@ def run(args):
 
             # os.makedirs(f'{result_root}/plans/{env_name}', exist_ok=True)
             # imageio.mimsave(f'{result_root}/plans/{env_name}/{camera}_{seed}.mp4', images.transpose(0, 2, 3, 1))
-
             images, _, _, episode_return = collect_video_rgbd(obs, env, policy, camera_name=camera, resolution=resolution, show_traj=True)
+           
             rewards.append(episode_return / len(images))
-            imageio.mimsave('debug2.mp4', images)
+            imageio.mimsave('debug.mp4', images)
             used_replans = max_replans - policy.replans
             ### save sample video
             os.makedirs(f'{result_root}/videos/{env_name}', exist_ok=True)
@@ -94,9 +93,9 @@ def run(args):
                 success += 1
                 replans_counter[used_replans] += 1
                 print("success, used replans: ", used_replans)
-                import ipdb;ipdb.set_trace()
             else:
                 import ipdb;ipdb.set_trace()
+                
         rewards = rewards + [0] * (n_exps - len(rewards))
         reward_means.append(np.mean(rewards))
         reward_stds.append(np.std(rewards))

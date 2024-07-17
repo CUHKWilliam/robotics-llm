@@ -665,7 +665,6 @@ class GoalGaussianDiffusion(nn.Module):
         x = self.q_sample(x_start=x_start, t=t, noise=noise)
 
         # predict and take gradient step
-
         model_out = self.model(torch.cat([x.float(), x_cond.float()], dim=1), t, task_embed)
 
         if self.objective == 'pred_noise':
@@ -1254,7 +1253,7 @@ class Trainer(object):
             if key in model_param:
                 if ckpt_param[key].size() == model_param[key].size():
                     ckpt_param2[key] = ckpt_param[key]
-        model.load_state_dict(ckpt_param2, strict=False)
+        model.load_state_dict(ckpt_param2, strict=True)
 
         self.step = data['step']
         try:

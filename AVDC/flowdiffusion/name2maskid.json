@@ -1,7 +1,7 @@
 {
     "door-open-v2-goal-observable": [43],
     "door-close-v2-goal-observable": [43],
-    "basketball-v2-goal-observable": [-19],
+    "basketball-v2-goal-observable": [-9],
     "shelf-place-v2-goal-observable": [36],
     "button-press-v2-goal-observable": [43, 44],
     "button-press-topdown-v2-goal-observable": [43, 44],
@@ -11,5 +11,6 @@
     "hammer-v2-goal-observable": [36],
     "assembly-v2-goal-observable": [37, 38],
     "drawer-open-v2-goal-observable": [43],
-    "drawer-close-v2-goal-observable": [43]
+    "drawer-close-v2-goal-observable": [43],
+    "drawer-with-bin-v2-goal-observable": {"handle": 43, "box": 52, "table": -19, "into drawer": 42}
 }

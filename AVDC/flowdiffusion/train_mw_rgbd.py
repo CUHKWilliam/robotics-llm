@@ -1,7 +1,7 @@
 from goal_diffusion import GoalGaussianDiffusion, Trainer
 from unet import UnetMW_rgbd as Unet_rgbd
 from transformers import CLIPTextModel, CLIPTokenizer
-from datasets import SequentialDatasetv2_rgbd
+from datasets import SequentialDatasetv2_rgbd, SequentialDatasetv2_rgbd_tfds2
 from torch.utils.data import Subset
 import argparse
 from minlora import add_lora, apply_to_lora, disable_lora, enable_lora, get_lora_params, merge_lora, name_is_lora, remove_lora, load_multiple_lora, select_lora
@@ -15,6 +15,16 @@ def main(args):
 
     if args.mode == 'inference':
         train_set = valid_set = [None] # dummy
+    elif args.mode == "pretrain":
+        train_set = SequentialDatasetv2_rgbd_tfds2(
+            sample_per_seq=sample_per_seq, 
+            path="/media/msc-auto/HDD/wltang/data/x-embodiments", 
+            target_size=target_size,
+            randomcrop=True
+        )
+        valid_inds = [i for i in range(0, len(train_set), len(train_set)//valid_n)][:valid_n]
+        valid_set = Subset(train_set, valid_inds)
+
     else:
         train_set = SequentialDatasetv2_rgbd(
             sample_per_seq=sample_per_seq, 
@@ -42,7 +52,7 @@ def main(args):
         model=unet,
         image_size=target_size,
         timesteps=100,
-        sampling_timesteps=10,
+        sampling_timesteps=100,
         loss_type='l2',
         objective='pred_v',
         beta_schedule = 'cosine',
@@ -61,6 +71,7 @@ def main(args):
     #     min_snr_loss_weight = True,
     # )
 
+    batch_size = 1
     trainer = Trainer(
         diffusion_model=diffusion,
         tokenizer=tokenizer, 
@@ -69,14 +80,14 @@ def main(args):
         valid_set=valid_set,
         train_lr=1e-4,
         train_num_steps =800000,
-        save_and_sample_every =2000,
+        save_and_sample_every = 2000,
         ema_update_every = 10,
         ema_decay = 0.999,
-        train_batch_size =1,
+        train_batch_size =batch_size,
         valid_batch_size =1,
         gradient_accumulate_every = 1,
         num_samples=valid_n, 
-        results_folder = '../results/mw-lora-2-drawer-key', # '../results/mw-lora-2-key', # '../results/mw-lora-2-all',
+        results_folder = '../results/mw-lora-2-all', # '../results/mw-lora-2-key', # '../results/mw-lora-2-all',
         fp16 =True,
         amp=True,
         ## TODO:
@@ -86,7 +97,7 @@ def main(args):
     if args.checkpoint_num is not None:
         trainer.load(args.checkpoint_num)
     
-    if args.mode == 'train':
+    if args.mode == 'train' or args.mode == "pretrain":
         trainer.train_rgbd()
     else:
         from PIL import Image
@@ -116,8 +127,8 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-m', '--mode', type=str, default='train', choices=['train', 'inference']) # set to 'inference' to generate samples
-    parser.add_argument('--local_rank', type=str, default='train', choices=['train', 'inference']) # set to 'inference' to generate samples
+    parser.add_argument('-m', '--mode', type=str, default='train', choices=['train', 'inference', 'pretrain']) # set to 'inference' to generate samples
+    parser.add_argument('--local_rank', type=int, default=0, ) # set to 'inference' to generate samples
     parser.add_argument('-c', '--checkpoint_num', type=int, default=None) # set to checkpoint number to resume training or generate samples
     parser.add_argument('-p', '--inference_path', type=str, default=None) # set to path to generate samples
     parser.add_argument('-t', '--text', type=str, default=None) # set to text to generate samples

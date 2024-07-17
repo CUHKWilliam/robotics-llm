@@ -133,6 +133,7 @@ def collect_video_rgbd(init_obs, env, policy, camera_name='corner3', resolution=
                 # env.data.body_xpos[env.model.body_name2id('debug{}'.format(i))] = subgoal
                 env.model.body_pos[env.model.body_name2id('debug{}'.format(i))] = subgoal
                 # env.data.geom_xpos[env.model.body_name2id('debug{}'.format(i))] = subgoal
+                break
             env.sim.forward()
         image, depth = env.render(depth=True, offscreen=True, camera_name=camera_name, resolution=resolution, body_invisible=body_invisible)
         seg_img = np.zeros((image.shape[0], image.shape[1]))
