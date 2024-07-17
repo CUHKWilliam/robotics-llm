@@ -87,7 +87,7 @@ def main(args):
         valid_batch_size =1,
         gradient_accumulate_every = 1,
         num_samples=valid_n, 
-        results_folder = '../results/mw-lora-2-all', # '../results/mw-lora-2-key', # '../results/mw-lora-2-all',
+        results_folder = '../results/mw-lora-2-faucet', # '../results/mw-lora-2-key', # '../results/mw-lora-2-all',
         fp16 =True,
         amp=True,
         ## TODO:

@@ -229,7 +229,7 @@ class MySeqDatasetMW(SequentialDataset):
         print("Preparing dataset...")
         self.sample_per_seq = sample_per_seq
 
-        sequence_dirs = glob(f"{path}/**/metaworld_dataset/*/*/", recursive=True)
+        sequence_dirs = glob(f"{path}/**/metaworld_dataset_faucet/*/*/", recursive=True)
         self.tasks = []
         self.sequences = []
         for seq_dir in sequence_dirs:
@@ -427,7 +427,7 @@ class SequentialDatasetv2_rgbd(Dataset):
         self.frame_skip = frameskip
 
         # sequence_dirs = glob(f"{path}/**/metaworld_dataset_all_key/*/*/*/", recursive=True)
-        sequence_dirs = glob(f"{path}/**/metaworld_dataset/*/*/*/", recursive=True)
+        sequence_dirs = glob(f"{path}/**/metaworld_dataset_faucet/*/*/*/", recursive=True)
         
         self.tasks = []
         self.full_task_names = []

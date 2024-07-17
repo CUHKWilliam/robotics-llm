@@ -669,7 +669,8 @@ class UNetModel(nn.Module):
         
         if self.task_tokens:
             label_emb = self.task_attnpool(y).mean(dim=1)
-            emb = emb + label_emb
+            ## TODO:
+            emb = emb + label_emb * 10.
 
 
         h = x.type(self.dtype)
