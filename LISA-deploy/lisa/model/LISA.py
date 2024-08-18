@@ -430,3 +430,11 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
                 pred_masks.append(pred_mask[:, 0])
 
         return output_ids, pred_masks
+
+
+class LISAForCausalLMTiny(LISAForCausalLM):
+    def __init__(
+        self, config, **kwargs,
+    ):
+        config.num_hidden_layers = 20
+        super().__init__(config, **kwargs)

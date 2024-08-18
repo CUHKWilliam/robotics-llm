@@ -124,9 +124,9 @@ def main(args):
         use_fast=False,
     )
     tokenizer.pad_token = tokenizer.unk_token
-    num_added_tokens = tokenizer.add_tokens("[SEG]")
+    # num_added_tokens = tokenizer.add_tokens("[SEG]")
     args.seg_token_idx = tokenizer("[SEG]", add_special_tokens=False).input_ids[0]
-
+    import ipdb;ipdb.set_trace()
     if args.use_mm_start_end:
         tokenizer.add_tokens(
             [DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN], special_tokens=True
@@ -174,6 +174,7 @@ def main(args):
     ]
 
     lora_r = args.lora_r
+    '''
     if lora_r > 0:
 
         def find_linear_layers(model, lora_target_modules):
@@ -213,7 +214,8 @@ def main(args):
         )
         model = get_peft_model(model, lora_config)
         model.print_trainable_parameters()
-
+    '''
+    
     model.resize_token_embeddings(len(tokenizer))
 
     # make text_hidden_fcs, mask_decoder, lm_head, embed_tokens trainable
@@ -302,10 +304,8 @@ def main(args):
             "allgather_bucket_size": 5e8,
         },
     }
-    model_engine, optimizer, train_loader, scheduler = deepspeed.initialize(
-        model=model,
-        model_parameters=model.parameters(),
-        training_data=train_dataset,
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset,
         collate_fn=partial(
             collate_fn,
             tokenizer=tokenizer,
@@ -313,8 +313,24 @@ def main(args):
             use_mm_start_end=args.use_mm_start_end,
             local_rank=args.local_rank,
         ),
-        config=ds_config,
+        shuffle=True,
     )
+    train_iter = iter(train_loader)
+    data = next(train_iter)
+    import ipdb;ipdb.set_trace()
+    # model_engine, optimizer, train_loader, scheduler = deepspeed.initialize(
+    #     model=model,
+    #     model_parameters=model.parameters(),
+    #     training_data=train_dataset,
+    #     collate_fn=partial(
+    #         collate_fn,
+    #         tokenizer=tokenizer,
+    #         conv_type=args.conv_type,
+    #         use_mm_start_end=args.use_mm_start_end,
+    #         local_rank=args.local_rank,
+    #     ),
+    #     config=ds_config,
+    # )
 
     # resume deepspeed checkpoint
     if args.auto_resume and len(args.resume) == 0:
@@ -454,7 +470,7 @@ def train(
             else:
                 input_dict["images"] = input_dict["images"].float()
                 input_dict["images_clip"] = input_dict["images_clip"].float()
-
+            import ipdb;ipdb.set_trace()
             output_dict = model(**input_dict)
 
             loss = output_dict["loss"]

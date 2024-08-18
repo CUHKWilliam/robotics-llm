@@ -427,7 +427,7 @@ class SequentialDatasetv2_rgbd(Dataset):
         self.frame_skip = frameskip
 
         # sequence_dirs = glob(f"{path}/**/metaworld_dataset_all_key/*/*/*/", recursive=True)
-        sequence_dirs = glob(f"{path}/**/metaworld_dataset_faucet/*/*/*/", recursive=True)
+        sequence_dirs = glob(f"{path}/**/franka-kitchen_dataset/*/*/*/", recursive=True)
         
         self.tasks = []
         self.full_task_names = []
@@ -446,6 +446,7 @@ class SequentialDatasetv2_rgbd(Dataset):
             # with open(os.path.join(seq_dir, 'key_indices.pkl'), 'rb') as f:
                 # key_indice = pickle.load(f)
             # self.key_indices.append(key_indice)
+
         self.transform = video_transforms.Compose([
             video_transforms.CenterCrop((128, 128)),
             video_transforms.Resize(target_size),
@@ -663,7 +664,7 @@ class SequentialDatasetv2_contact_detection(Dataset):
         self.frame_skip = frameskip
 
         # sequence_dirs = glob(f"{path}/**/metaworld_dataset_all_key/*/*/*/", recursive=True)
-        sequence_dirs = glob(f"{path}/**/metaworld_dataset_basketball/*/*/*/", recursive=True)
+        sequence_dirs = glob(f"{path}/**/franka-kitchen_dataset/*/*/*/", recursive=True)
         
         self.tasks = []
         self.full_task_names = []
@@ -676,7 +677,12 @@ class SequentialDatasetv2_contact_detection(Dataset):
             #     continue
             seq = sorted(glob(f"{seq_dir}*.npy"), key=lambda x: int(x.split("/")[-1].rstrip(".npy")))
             self.sequences.append(seq)
-            self.tasks.append(seq_dir.split("/")[-4].replace("-", " "))
+            if "v2" in seq_dir:
+                self.tasks.append(seq_dir.split("/")[-4].replace("-", " "))
+            elif "v3" in seq_dir:
+                self.tasks.append(
+                    seq_dir.split("/")[-4].split('-v3')[0].replace("_", " ").replace("sdoor", "sliding door").replace("ldoor", 'opening door').replace('micro', 'microwave')
+                )
             self.full_task_names.append(seq_dir.split('/')[-4])
             # import pickle
             # with open(os.path.join(seq_dir, 'key_indices.pkl'), 'rb') as f:
@@ -752,6 +758,7 @@ class SequentialDatasetv2_contact_detection(Dataset):
         images = []
         segms = []
         task = self.tasks[idx]
+        full_task_name = self.full_task_names[idx]
         image_clips = []
         image_paths = []
         for i in range(len(samples)):
@@ -776,7 +783,7 @@ class SequentialDatasetv2_contact_detection(Dataset):
             else:
                 image = image.float()
             segm = data[:, :, 4:5]
-            mask_id = self.name2maskid['-'.join(task.split(" ")) + "-v2-goal-observable"]
+            mask_id = self.name2maskid[full_task_name]
             mask_id = [a_mask_id + 20 for a_mask_id in mask_id]
             segm_mask = np.zeros_like(segm).astype(np.bool_)
             for a_mask_id in mask_id:

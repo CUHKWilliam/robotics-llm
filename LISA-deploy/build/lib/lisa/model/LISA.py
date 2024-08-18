@@ -4,9 +4,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from transformers import BitsAndBytesConfig, CLIPVisionModel
-from llava.model.language_model.llava_llama import (LlavaLlamaForCausalLM,
+from .llava.model.language_model.llava_llama import (LlavaLlamaForCausalLM,
                                                      LlavaLlamaModel)
-from segment_anything import build_sam_vit_h
+from .segment_anything import build_sam_vit_h
 
 
 def dice_loss(
@@ -51,6 +51,10 @@ def sigmoid_ce_loss(
         Loss tensor
     """
     loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction="none")
+    # pos = (targets == 1).sum()
+    # neg = (targets == 0).sum()
+    # loss[targets == 0] *= pos / (pos + neg)
+    # loss[targets == 1] *= neg / (pos + neg)
     loss = loss.flatten(1, 2).mean(1).sum() / (num_masks + 1e-8)
     return loss
 
@@ -122,7 +126,7 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
         config,
         **kwargs,
     ):
-        if not hasattr(config, "train_mask_decoder"):
+        if hasattr(config, "train_mask_decoder"):
             config.mm_use_im_start_end = kwargs.pop("use_mm_start_end", True)
             config.mm_vision_tower = kwargs.get(
                 "vision_tower", "openai/clip-vit-large-patch14"
@@ -241,7 +245,6 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
             output_hidden_states = output.hidden_states
 
         hidden_states = []
-
         assert len(self.model.text_hidden_fcs) == 1
         hidden_states.append(self.model.text_hidden_fcs[0](output_hidden_states[-1]))
 
@@ -308,7 +311,12 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
         for batch_idx in range(len(pred_masks)):
             gt_mask = gt_masks[batch_idx]
             pred_mask = pred_masks[batch_idx]
-
+            ## TODO:
+            # import ipdb;ipdb.set_trace()
+            import cv2
+            cv2.imwrite('debug.png', (gt_mask[0] * 255).detach().cpu().numpy())
+            cv2.imwrite('debug2.png', (pred_mask[0] * 255).detach().cpu().numpy())
+            
             assert (
                 gt_mask.shape[0] == pred_mask.shape[0]
             ), "gt_mask.shape: {}, pred_mask.shape: {}".format(
@@ -328,7 +336,7 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
         mask_dice_loss = self.dice_loss_weight * mask_dice_loss / (num_masks + 1e-8)
         mask_loss = mask_bce_loss + mask_dice_loss
 
-        loss = ce_loss + mask_loss
+        loss = mask_loss
 
         return {
             "loss": loss,
@@ -374,6 +382,7 @@ class LISAForCausalLM(LlavaLlamaForCausalLM):
 
             assert len(self.model.text_hidden_fcs) == 1
             hidden_states.append(self.model.text_hidden_fcs[0](output_hidden_states))
+            
 
             last_hidden_state = torch.stack(hidden_states, dim=-1).sum(dim=-1)
             pred_embeddings = last_hidden_state[seg_token_mask]

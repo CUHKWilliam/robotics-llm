@@ -18,7 +18,7 @@ from utils.utils import (DEFAULT_IM_END_TOKEN, DEFAULT_IM_START_TOKEN,
 
 def parse_args():
     parser = argparse.ArgumentParser(description="LISA chat")
-    parser.add_argument("--version", default="xinlai/LISA-13B-llama2-v1")
+    parser.add_argument("--version", default="xinlai/LISA-7B-v1")
     parser.add_argument("--vis_save_path", default="./vis_output", type=str)
     parser.add_argument(
         "--precision",
@@ -130,15 +130,15 @@ def main(image_path, prompt):
     ):
         vision_tower = model.get_model().get_vision_tower()
         model.model.vision_tower = None
-        import deepspeed
-
-        model_engine = deepspeed.init_inference(
-            model=model,
-            dtype=torch.half,
-            replace_with_kernel_inject=True,
-            replace_method="auto",
-        )
-        model = model_engine.module
+        ## TODO:
+        # import deepspeed
+        # model_engine = deepspeed.init_inference(
+        #     model=model,
+        #     dtype=torch.half,
+        #     replace_with_kernel_inject=True,
+        #     replace_method="auto",
+        # )
+        # model = model_engine.module
         model.model.vision_tower = vision_tower.half().cuda()
     elif args.precision == "fp32":
         model = model.float().cuda()
@@ -164,7 +164,7 @@ def main(image_path, prompt):
     conv.append_message(conv.roles[0], prompt)
     conv.append_message(conv.roles[1], "")
     prompt = conv.get_prompt()
-   
+
     image_np = cv2.imread(image_path)
     image_np = cv2.cvtColor(image_np, cv2.COLOR_BGR2RGB)
     original_size_list = [image_np.shape[:2]]
@@ -197,7 +197,7 @@ def main(image_path, prompt):
         image = image.half()
     else:
         image = image.float()
-
+    
     input_ids = tokenizer_image_token(prompt, tokenizer, return_tensors="pt")
     input_ids = input_ids.unsqueeze(0).cuda()
 
@@ -228,7 +228,7 @@ def main(image_path, prompt):
             + pred_mask[:, :, None].astype(np.uint8) * np.array([255, 0, 0]) * 0.5
         )[pred_mask]
         save_img = cv2.cvtColor(save_img, cv2.COLOR_RGB2BGR)
-        cv2.imwrite("debug.png", save_img)
+        cv2.imwrite("debug2.png", save_img)
         import ipdb;ipdb.set_trace()
 
 image_path = 'door-close.png'

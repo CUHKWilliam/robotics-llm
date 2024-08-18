@@ -6,6 +6,7 @@ from torch.utils.data import Subset
 import argparse
 from minlora import add_lora, apply_to_lora, disable_lora, enable_lora, get_lora_params, merge_lora, name_is_lora, remove_lora, load_multiple_lora, select_lora
 
+dataset_name = "franka-kitchen"
 
 def main(args):
     valid_n = 1
@@ -28,7 +29,7 @@ def main(args):
     else:
         train_set = SequentialDatasetv2_rgbd(
             sample_per_seq=sample_per_seq, 
-            path="../datasets/metaworld", 
+            path="../datasets/{}".format(dataset_name), 
             target_size=target_size,
             randomcrop=True
         )
@@ -79,7 +80,7 @@ def main(args):
         train_set=train_set,
         valid_set=valid_set,
         train_lr=1e-4,
-        train_num_steps =800000,
+        train_num_steps =1000000,
         save_and_sample_every = 2000,
         ema_update_every = 10,
         ema_decay = 0.999,
@@ -87,7 +88,7 @@ def main(args):
         valid_batch_size =1,
         gradient_accumulate_every = 1,
         num_samples=valid_n, 
-        results_folder = '../results/mw-lora-2-faucet', # '../results/mw-lora-2-key', # '../results/mw-lora-2-all',
+        results_folder = '../results/fk-lora-2-all', # '../results/mw-lora-2-key', # '../results/mw-lora-2-all',
         fp16 =True,
         amp=True,
         ## TODO:

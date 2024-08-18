@@ -385,6 +385,62 @@ def pred_video_rgbd(model, frame_0, task, flow=False):
     ret = images.numpy().transpose(0, 2, 3, 1) * 128 if flow else (images.numpy()*255).astype('uint8'), depths, segms1, segms2
     return ret
 
+
+def pred_video_rgbd_fk(model, frame_0, task, flow=False):
+    device = model.device
+    original_shape = frame_0.shape
+    center = (original_shape[1]//2, original_shape[0]//2)
+    xpad, ypad = center[0]-64, center[1]-64
+
+    channels = 6 if not flow else 2
+    transform = video_transforms.Compose([
+        # video_transforms.CenterCrop((120, 120)),
+        video_transforms.Resize((128, 128)),
+        volume_transforms.ClipToTensor()
+    ])
+    transform_depth = video_transforms.Compose([
+        # video_transforms.CenterCrop((120, 120)),
+        video_transforms.Resize((128, 128)),
+    ])
+    image = frame_0[..., :3]
+    depth = np.repeat(frame_0[..., 3:4], axis=-1, repeats=3)
+    segm1 = np.repeat(frame_0[..., 4:5], axis=-1, repeats=3)
+    segm2 = np.repeat(frame_0[..., 5:6], axis=-1, repeats=3)
+    image = transform([image]).permute((1, 2, 3, 0)).contiguous()
+    depth = transform_depth([depth])
+    segm1 = transform_depth([segm1])
+    segm2 = transform_depth([segm2])
+    depth = torch.from_numpy(np.stack(depth, axis=0))[..., :1]
+    segm1 = torch.from_numpy(np.stack(segm1, axis=0))[..., :1]
+    segm2 = torch.from_numpy(np.stack(segm2, axis=0))[..., :1]
+    text = [task]
+    image_depth_segm = torch.cat((image, depth, segm1, segm2), dim=-1)
+    image_depth_segm = image_depth_segm.permute(0, 3, 1, 2).contiguous()
+    
+    preds = rearrange(model.sample(image_depth_segm.to(device), text).cpu().squeeze(0), "(f c) w h -> f c w h", c=channels)
+    
+    # pad the image back to original shape (both sides)
+    
+    images = preds[:, :3, :, :]
+    # import cv2
+    # cv2.imwrite('debug.png', images[5].permute(1, 2, 0).detach().cpu().numpy() *255)
+    # import ipdb;ipdb.set_trace()
+
+    depths = preds[:, 3:4, :, :]
+    segms1 = preds[:, 4:5, :, :]
+    segms2 = preds[:, 5:6, :, :]
+    if not flow:
+        images = torch.cat([image.permute(0, 3, 1, 2), images], dim=0)
+        depths = torch.cat([depth.permute(0, 3, 1, 2), depths], dim=0)
+        segms1 = torch.cat([segm1.permute(0, 3, 1, 2), segms1], dim=0)
+        segms2 = torch.cat([segm2.permute(0, 3, 1, 2), segms2], dim=0)
+    # images = torch.nn.functional.pad(images, (xpad, xpad, ypad, ypad))
+    # depths = torch.nn.functional.pad(depths, (xpad, xpad, ypad, ypad))
+    # segms1 = torch.nn.functional.pad(segms1, (xpad, xpad, ypad, ypad))
+    # segms2 = torch.nn.functional.pad(segms2, (xpad, xpad, ypad, ypad))
+    ret = images.numpy().transpose(0, 2, 3, 1) * 128 if flow else (images.numpy()*255).astype('uint8'), depths, segms1, segms2
+    return ret
+
 def pred_video_thor(model, frame_0, task):
     channels=3
     transform = T.Compose([

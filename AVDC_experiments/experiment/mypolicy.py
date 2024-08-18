@@ -741,8 +741,7 @@ def to_3d2(points, depths, cmat):
 from sklearn.cluster import KMeans
 import argparse
 import sys
-sys.path.append("/media/msc-auto/HDD/wltang/robotics-llm/AVDC_experiments/experiment/CamLiFlow")
-from factory import model_factory
+sys.path.append("/data/wltang/robotics-llm/AVDC_experiments/experiment/CamLiFlow")
 scene_flow_model_config = {'name': 'camliraft', 'batch_size': 8, 'freeze_bn': False, 'backbone': {'depth': 50, 'pretrained': 'pretrain/resnet50-11ad3fa6.pth'}, 'n_iters_train': 10, 'n_iters_eval': 20, 'fuse_fnet': True, 'fuse_cnet': True, 'fuse_corr': True, 'fuse_motion': True, 'fuse_hidden': False, 'loss2d': {'gamma': 0.8, 'order': 'l2-norm'}, 'loss3d': {'gamma': 0.8, 'order': 'l2-norm'}}
 scene_flow_model_config = argparse.Namespace(**scene_flow_model_config)
 scene_flow_model_config.backbone = argparse.Namespace(**{"depth": 50, "pretrained": './CamLiFlow/pretrain/resnet50-11ad3fa6.pth'})

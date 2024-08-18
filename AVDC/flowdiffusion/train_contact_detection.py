@@ -15,7 +15,7 @@ import deepspeed
 
 from lisa.utils.utils import (DEFAULT_IM_END_TOKEN, DEFAULT_IM_START_TOKEN,
                          DEFAULT_IMAGE_TOKEN, IMAGE_TOKEN_INDEX, AverageMeter, ProgressMeter, dict_to_cuda)
-from lisa.model.LISA import LISAForCausalLM
+from lisa.model.LISA import LISAForCausalLM, LISAForCausalLMTiny
 from lisa.model.llava import conversation as conversation_lib
 from lisa.utils.dataset import HybridDataset, ValDataset, collate_fn
 import time
@@ -62,7 +62,7 @@ def parse_args():
     parser.add_argument("--reason_seg_data", default="ReasonSeg|train", type=str)
     parser.add_argument("--val_dataset", default="ReasonSeg|val", type=str)
     parser.add_argument("--dataset_dir", default="./dataset", type=str)
-    parser.add_argument("--log_base_dir", default="./runs", type=str)
+    parser.add_argument("--log_base_dir", default="./runs-lora-all-fk", type=str)
     parser.add_argument("--exp_name", default="lisa", type=str)
     parser.add_argument("--epochs", default=10, type=int)
     parser.add_argument("--steps_per_epoch", default=500, type=int)
@@ -141,6 +141,7 @@ def train(
 
     # switch to train mode
     model.train()
+    # model.eval()
     
     ## TODO:
     # ckpt_path = "./runs/lisa/model_0.pth"
@@ -278,7 +279,9 @@ def main():
         torch_dtype = torch.bfloat16
     elif args.precision == "fp16":
         torch_dtype = torch.half
-    model = LISAForCausalLM.from_pretrained(
+
+    ## TODO:
+    model = LISAForCausalLMTiny.from_pretrained(
         args.version, torch_dtype=torch_dtype, low_cpu_mem_usage=True, **model_args
     )
     model.config.eos_token_id = tokenizer.eos_token_id
@@ -364,7 +367,7 @@ def main():
 
     train_dataset = SequentialDatasetv2_contact_detection(
         sample_per_seq=None, 
-        path="../datasets/metaworld", 
+        path="../datasets/franka-kitchen", 
         target_size=1024,
         randomcrop=True,
         vision_tower=model.config.vision_tower,
