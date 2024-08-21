@@ -46,7 +46,7 @@ def run(args):
     obs = env.get_obs()
 
     while True:
-        action = policy.get_action(obs)
+        action = policy.get_action_remote(obs)
         env.set_action(action)
         reached = False
         while not reached:

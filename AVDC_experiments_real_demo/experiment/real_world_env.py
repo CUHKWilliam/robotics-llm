@@ -1,6 +1,7 @@
 import numpy as np
 from realsense import RealSense
 from robot_controller import robot_controller
+import pickle
 
 class RealWorldEnv():
     def __init__(self, ):
@@ -9,8 +10,13 @@ class RealWorldEnv():
         self.robot_controller = robot_controller()
         self.desire_pos = None
         self.desire_euler = None
+        self.data_file_path = "/media/msc-auto/HDD/wltang/tmp/communication.pkl"
+        self.lock_file_path = "/media/msc-auto/HDD/wltang/tmp/lock.txt"
+        self.server_name = "msc-auto@128.32.164.89"
+        with open(self.lock_file_path, "w") as f:
+            f.write('0')
 
-    def get_obs(self):
+    def get_obs(self, ):
         obs = {}
         color_image, depth_image = self.rs.capture()
         obs['color_image'] = color_image
@@ -33,6 +39,29 @@ class RealWorldEnv():
     def step(self, ):
         reached = self.robot_controller.move_to_point_step(np.concatenate([self.desire_pos, self.desire_euler]))
         return reached
+    
+    def get_obs_remote(self):
+        while not self.check_recv():
+            continue
+        with open(self.data_file_path, "rb") as f:
+            recv = pickle.load(f)
+        return recv
+    
+    def set_action_remote(self, action):
+        new_ee_pos = action['ee_pos']
+        new_ee_euler = action['ee_euler']
+        ## set end-effector position and pose
+        self.desire_pos = new_ee_pos
+        self.desire_euler = new_ee_euler
+        with open(self.data_file_path, 'wb') as f:
+            pickle.dump({"desire_pos": self.desire_pos,  "desire_euler": self.desire_euler}, f)
+        with open(self.lock_file_path, 'w') as f:
+            f.write("0")
 
-    def get_point_cloud(self, image, depth):
-        pass
+    def check_recv(self,):
+        with open(self.lock_file_path, "r") as f:
+            content = f.read().strip()
+            if content  == "0":
+                return False
+            else:
+                return True

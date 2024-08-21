@@ -98,7 +98,7 @@ def draw_arrow(pcd, start, end):
     pcd.colors = o3d.utility.Vector3dVector(cols)
     return pcd
 
-
+import subprocess
 class MyPolicy_CL_rgbd(Policy):
     def __init__(self, env, task, video_model, flow_model, dataset, resolution=(640, 480), plan_timeout=20, log=False, return_qpos=False):
         self.dataset = dataset
@@ -452,6 +452,28 @@ class MyPolicy_CL_rgbd(Policy):
         self.time_from_last_plan = 0
         return subgoals, subgoals_rot
 
+    def get_action_remote(self, obs):
+        self.server_name = self.env.server_name
+        self.data_file_path = self.env.data_file_path
+        self.lock_file_path = self.env.lock_file_path
+        with open("tmp.pkl", "wb") as f:
+            pickle.dump(obs, f)
+        subprocess.Popen('scp -r -P 22 {} {}:{}'.format("tmp.pkl", self.server_name, self.data_file_path), shell=True)
+        with open("tmp.txt", 'w') as f:
+            f.write("1")
+        subprocess.Popen('scp -r -P 22 {} {}:{}'.format("tmp.txt", self.server_name, self.lock_file_path), shell=True)
+        time.sleep(0.5)
+        while True:
+            subprocess.Popen('scp -r -P 22 {}:{} {}'.format(self.server_name, self.lock_file_path, "tmp.txt"), shell=True)
+            with open("tmp.txt", 'r') as f:
+                content = f.read().strip()
+            if content == "0":
+                break
+        subprocess.Popen('scp -r -P 22 {}:{} {}'.format(self.server_name, self.data_file_path, "tmp.pkl"), shell=True)
+        with open("tmp.pkl", 'rb') as f:
+            action = pickle.load(f)
+        return action
+    
     def get_action(self, obs):
         o_d = self._parse_obs(obs)
         # if stucked (not moving), step the countdown
