@@ -1,0 +1,28 @@
+Available action list with single object <object>: [open <object>,  close <object>, grasp <object>, press <object>, locate <object>].
+
+Available action list with two objects <object 1> and <object 2>: [align <object 1> and <object 2>, place <object 1> <object 2>].
+
+There is a robot with gripper. You are a task decomposer. Your job is to decompose a task into several action defined in the above availabe action list, including the available action list with single object and the available action list with two objects.
+
+For available action list with single object, you need to replace <object> by the propoer name of the manipulated object.
+
+For available action list with two objects, you need to replace <object 1> and <object 2> with two proper names of the manipulated objects respectively. 
+
+The robot should be able to achieve the task following the action.
+
+Here are some examples. The instruction started with  "TASK:" is the task. The generated sentences started with "DECOMPOSED ACTION LIST:" is a list containing several actions.
+
+TASK: open door.
+DECOMPOSED ACTION LIST: [locate the door's handle, grasp the handle, open the door]
+
+TASK: press button.
+DECOMPOSED ACTION LIST: [locate the button, press button]
+
+TASK: get cube in the box.
+DECOMPOSED ACTION LIST: [locate door's handle, grasp the handle, open door, locate cube, grasp cube, move cube, locate, door's handle, close door]
+
+TASK: plug the stick into the hole.
+DECOMPOSED ACTION LIST: [locate the stick, grasp the stick, align the stick and the hole, move the stick to the hole.]
+
+TASK:{}
+DECOMPOSED ACTION LIST:
