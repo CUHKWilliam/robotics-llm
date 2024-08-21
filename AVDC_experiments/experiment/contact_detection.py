@@ -56,6 +56,7 @@ def preprocess(
 model = None
 clip_image_processor = None
 def main(image_np, prompt):
+    image_np = image_np[:, :, ::-1]
     args = parse_args()
     # Create model
     tokenizer = AutoTokenizer.from_pretrained(
@@ -167,11 +168,11 @@ def main(image_np, prompt):
         elif args.precision == "fp32":
             model = model.float().cuda()
         vision_tower = model.get_model().get_vision_tower()
-        vision_tower.to(device=args.local_rank)
+        vision_tower.to(device=args.local_rank) 
 
         clip_image_processor = CLIPImageProcessor.from_pretrained(model.config.vision_tower)
 
-        ckpt_path = "../../AVDC/flowdiffusion/runs/lisa/model_1.pth"
+        ckpt_path = "../../AVDC/flowdiffusion/runs-lora/lisa/model_9.pth"
         ckpt = torch.load(ckpt_path)
         model.load_state_dict(ckpt['state_dict'], strict=False)
         model.eval()
@@ -236,21 +237,19 @@ def main(image_np, prompt):
     )
     pred_masks = torch.stack(pred_masks, dim=0)
     # THRESH = ((pred_masks.max()) - 1.).item()
-    THRESH = 2.
-    # ## TODO: for vis
-    for i, pred_mask in enumerate(pred_masks):
-        pred_mask = pred_mask.detach().cpu().numpy()[0]
-        pred_mask = pred_mask > THRESH
-        save_img = image_np.copy()
-        save_img[pred_mask] = (
-            image_np * 0.5
-            + pred_mask[:, :, None].astype(np.uint8) * np.array([255, 0, 0]) * 0.5
-        )[pred_mask]
-        save_img = cv2.cvtColor(save_img, cv2.COLOR_RGB2BGR)
-        cv2.imwrite("debug2.png", save_img)
-        # import ipdb;ipdb.set_trace()
-    # ## TODO: end vis
+    
+    THRESH = 1.
     pred_mask = torch.any(pred_masks > THRESH, dim=0)[0]
+
+    pred_mask_np = pred_mask.detach().cpu().numpy()
+    save_img = image_np.copy()
+    save_img[pred_mask_np] = (
+        image_np * 0
+        + pred_mask_np[:, :, None].astype(np.uint8) * np.array([0, 0, 255]) * 1.
+    )[pred_mask_np]
+    cv2.imwrite("debug2.png", save_img)
+    # import ipdb;ipdb.set_trace()
+
     return pred_mask.cpu()
 
 def predict(image, prompt):

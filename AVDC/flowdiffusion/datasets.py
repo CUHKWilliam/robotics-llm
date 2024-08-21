@@ -229,7 +229,7 @@ class MySeqDatasetMW(SequentialDataset):
         print("Preparing dataset...")
         self.sample_per_seq = sample_per_seq
 
-        sequence_dirs = glob(f"{path}/**/metaworld_dataset_faucet/*/*/", recursive=True)
+        sequence_dirs = glob(f"{path}/**/metaworld_dataset_basketball/*/*/", recursive=True)
         self.tasks = []
         self.sequences = []
         for seq_dir in sequence_dirs:
@@ -511,7 +511,6 @@ class SequentialDatasetv2_rgbd(Dataset):
         depths[depths > high] = high
         depths -= low
         depths /= (high - low)
-
         images_depth = torch.cat([images, depths, segms[0].permute(3, 0, 1, 2)], dim=0)
         x_cond = images_depth[:, 0] # first frame
         x = rearrange(images_depth[:, 1:], "c f h w -> (f c) h w") # all other frames
@@ -813,7 +812,8 @@ class SequentialDatasetv2_contact_detection(Dataset):
         conv = conversation_lib.default_conversation.copy()
         conv.messages = []
 
-        text = "Where should I grasp if I need to conduct task {} ? Please output segmentation mask.".format(task)
+        # text = "Where should I grasp if I need to conduct task {} ? Please output segmentation mask.".format(task)
+        text = "Where is the handle ? Please output segmentation mask."
         questions = [DEFAULT_IMAGE_TOKEN + "\n" + text]
         conv.append_message(conv.roles[0], questions[0])
         conv.append_message(conv.roles[1], "It is [SEG].")

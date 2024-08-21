@@ -126,7 +126,7 @@ def collect_video_rgbd(init_obs, env, policy, camera_name='corner3', resolution=
             break
         if dd != 10 and not done:
             break
-        if show_traj:
+        if show_traj and policy.subgoals is not None:
             subgoals = policy.subgoals
             for i in range(len(subgoals)):
                 subgoal = subgoals[i]
@@ -145,7 +145,7 @@ def collect_video_rgbd(init_obs, env, policy, camera_name='corner3', resolution=
         # plt.imshow(image)
         # plt.show()
         # import ipdb;ipdb.set_trace()
-        if show_traj:
+        if show_traj and policy.subgoals is not None:
             for i in range(len(subgoals)):
                 subgoal = subgoals[i]
                 env.model.body_pos[env.model.body_name2id('debug{}'.format(i))

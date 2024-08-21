@@ -1,12 +1,16 @@
 import numpy as np
-from read_scene_pcs import RealSense
+from realsense import RealSense
 import os
 import cv2
 
-save_root = "../../AVDC/datasets/realworld_data"
+save_root = "../../AVDC/datasets/realworld"
 os.makedirs(save_root, exist_ok=True)
 
-task = "put_black_stick_to_while_modal"
+dataset_name = "realworld_dataset"
+save_path = os.path.join(save_root, dataset_name)
+os.makedirs(save_path, exist_ok=True)
+
+task = "fill_water_to_red_cup_with_kettle"
 save_dir = os.path.join(save_root, task)
 os.makedirs(save_dir, exist_ok=True)
 

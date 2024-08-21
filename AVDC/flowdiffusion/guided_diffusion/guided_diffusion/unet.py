@@ -477,6 +477,9 @@ class UNetModel(nn.Module):
         self.num_heads = num_heads
         self.num_head_channels = num_head_channels
         self.num_heads_upsample = num_heads_upsample
+        
+        use_scale_shift_norm = True
+        self.use_scale_shift_norm = use_scale_shift_norm
 
         time_embed_dim = model_channels * 4
         self.time_embed = nn.Sequential(
@@ -500,6 +503,7 @@ class UNetModel(nn.Module):
         self._feature_size = ch
         input_block_chans = [ch]
         ds = 1
+
         for level, mult in enumerate(channel_mult):
             for _ in range(num_res_blocks):
                 layers = [

@@ -1253,13 +1253,13 @@ class Trainer(object):
             if key in model_param:
                 if ckpt_param[key].size() == model_param[key].size():
                     ckpt_param2[key] = ckpt_param[key]
-        model.load_state_dict(ckpt_param2, strict=True)
+        model.load_state_dict(ckpt_param2, strict=False)
 
         self.step = data['step']
-        try:
-            self.opt.load_state_dict(data['opt'])
-        except:
-            pass
+        # try:
+        #     self.opt.load_state_dict(data['opt'])
+        # except:
+        #     pass
 
         if self.accelerator.is_main_process:
             model_param = {}

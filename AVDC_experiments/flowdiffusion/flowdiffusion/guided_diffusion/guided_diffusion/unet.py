@@ -478,6 +478,10 @@ class UNetModel(nn.Module):
         self.num_head_channels = num_head_channels
         self.num_heads_upsample = num_heads_upsample
 
+        ## TODO:
+        use_scale_shift_norm = True
+        self.use_scale_shift_norm = use_scale_shift_norm
+
         time_embed_dim = model_channels * 4
         self.time_embed = nn.Sequential(
             linear(model_channels, time_embed_dim),
@@ -669,6 +673,7 @@ class UNetModel(nn.Module):
         
         if self.task_tokens:
             label_emb = self.task_attnpool(y).mean(dim=1)
+            ## TODO:
             emb = emb + label_emb
         
         h = x.type(self.dtype)

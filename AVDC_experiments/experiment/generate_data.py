@@ -79,7 +79,7 @@ def run(args):
     n_exps = args.n_exps
     resolution = (320, 240)
     cameras = ['corner', 'corner2', 'corner3']
-    # cameras = ['corner3']
+    # cameras = ['corner', 'corner3']
 
     # video_model = get_video_model(ckpts_dir=args.ckpt_dir, milestone=args.milestone)
     flow_model = get_flow_model()
@@ -135,23 +135,43 @@ def run(args):
                     images.append(img)
                     depths.append(depth)
                     image_segms.append(data[:, :, -1])
-                    previous_image = img
-                    # all_segm_indices.append(data[:, :, -1])
-                
-            if len(images) <= 500:
+                if not flag:
+                    seed += 50
+                    continue
+                else:
+                    break
+            images2 = []
+            depths2 = []
+            image_segms2 = []
+            thresh = np.linalg.norm((images[5] - images[0]).reshape(-1, 3), axis=-1).mean() * 1.1
+            previous_image = None
+            for i in range(len(images)):
+                if previous_image is None or np.linalg.norm((images[i] - previous_image).reshape(-1, 3), axis=-1).mean() > thresh:
+                    images2.append(images[i])
+                    depths2.append(depths[i])
+                    image_segms2.append(image_segms[i])
+                    previous_image = images[i]
+            images2.append(images[-1])
+            depths2.append(depths[-1])
+            image_segms2.append(image_segms[-1])
+            images = images2
+            depths = depths2
+            image_segms = image_segms2
+            if len(images) <= 100:
                 imageio.mimsave('debug.mp4', images)
                 print("success")
                 SAVE_PATH = '/data/wltang/robotics-llm/AVDC/datasets/metaworld/metaworld_dataset_all'
                 # SAVE_PATH = './tmp'
                 save_path = SAVE_PATH
                 os.makedirs(save_path, exist_ok=True)
-                save_path = os.path.join(save_path, env_name.split("-v2")[0])
+                shot = '-10-shot'
+                save_path = os.path.join(save_path, env_name.split("-v2")[0] + shot)
                 os.makedirs(save_path, exist_ok=True)
                 save_path = os.path.join(save_path, camera)
                 os.makedirs(save_path, exist_ok=True)
                 save_path = os.path.join(save_path, "{:03}".format(cnt))
                 os.makedirs(save_path, exist_ok=True)
-                # indices = get_key_indices(all_segm_indices, env_name)
+
                 for i in range(len(images)):
                     # image, depth, segm = images[i], depths[i], segms[i]
                     image, depth, image_segm = images[i], depths[i], image_segms[i]
@@ -167,7 +187,7 @@ def run(args):
                 
                 cnt += 1
                 # import ipdb;ipdb.set_trace()
-
+            
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--env_name", type=str, default="door-open-v2-goal-observable")

@@ -756,7 +756,7 @@ class MyPolicy_CL_rgbd(Policy):
     def __init__(self, env, task, camera, video_model, flow_model, resolution=(640, 480), plan_timeout=20, max_replans=5, log=False):
         self.depth_low = -8
         self.depth_high = -1.5
-        plan_timeout = 40
+        plan_timeout = 200
         self.env = env
         self.seg_ids = name2maskid[task]
         self.task = " ".join(task.split('-')[:-3])
@@ -785,22 +785,25 @@ class MyPolicy_CL_rgbd(Policy):
         # self.tasks = self.plan_tasks(task)
         # self.tasks = self.plan_tasks_LISA(task)
         # self.tasks = ['locate', task]
-        self.tasks = ['locate', 'grasp', task]
+        self.tasks = ['locate', task]
         subgoals = []
         for i in range(len(self.tasks)):
             self.tasks[i] = self.tasks[i].strip()
         self.tasks_all = self.tasks
         self.is_traj = False
+        self.is_init = True
+        self.cnt_init = 0
+
         subgoals = self.calculate_next_plan()
         self.mode = 'push'
-        subgoals = [x+np.array([0,0,0.0]) for x in subgoals]
         self.subgoals = subgoals 
         self.subgoals_2d = None
         self.is_grasp = False
         self.grasp_cnt = 0
         self.grasp_lock = False
         self.need_refine = False
-        self.cnt_wait = 0
+        self.cnt_wait = 100
+
     
     def init_grasp(self):
         self.grasped = False
@@ -833,7 +836,13 @@ class MyPolicy_CL_rgbd(Policy):
 
     def calculate_next_plan(self, first=False, pos_curr=None):
         self.task = self.tasks[0]
+        if self.is_init:
+            self.replan_countdown = self.plan_timeout
+            return None
         
+        self.replans -= 1
+        self.replan_countdown = self.plan_timeout
+
         if self.task.split(' ')[0] == 'locate':
             self.is_traj = False
             subgoals = self.calculate_locate_predict(task = self.task)
@@ -843,6 +852,7 @@ class MyPolicy_CL_rgbd(Policy):
             self.grasp_lock = False
             self.grasp_cnt = 0
             subgoals = self.calculate_grasp_predict()
+            self.cnt_wait = 0
         else:
             safe_travel = False
             self.is_traj = True
@@ -861,8 +871,8 @@ class MyPolicy_CL_rgbd(Policy):
         self.previous_depth = depth.copy()
         data = self.env.render(camera_name=self.camera, depth=True, body_invisible=True, segmentation=True, resolution=self.resolution)
         
-        pos_curr_2d_1 = np.stack(np.where(data[:, :, -1] == 51), axis=-1)[:, ::-1].mean(0)
-        pos_curr_2d_2 = np.stack(np.where(data[:, :, -1] == 53), axis=-1)[:, ::-1].mean(0)
+        pos_curr_2d_1 = np.median(np.stack(np.where(data[:, :, -1] == 51), axis=-1)[:, ::-1])
+        pos_curr_2d_2 = np.median(np.stack(np.where(data[:, :, -1] == 53), axis=-1)[:, ::-1])
         pos_curr_2d = (pos_curr_2d_1 + pos_curr_2d_2) / 2.
         self.pos_curr_2d = pos_curr_2d
 
@@ -883,17 +893,15 @@ class MyPolicy_CL_rgbd(Policy):
         # TODO:
         pts_3d = torch.median(torch.from_numpy(pts_3d), dim=0)[0].detach().cpu().numpy() + np.array([0, 0, 0.0])
         self.grasp_3d = pts_3d
-        subgoals = [pts_3d + np.array([0, 0, 0.2])]
+        subgoals = [pts_3d + np.array([0, 0, 0.25])]
         self.subgoals_2d = subgoals
-        self.replans -= 1
-        self.replan_countdown = self.plan_timeout
         self.time_from_last_plan = 0
 
         return subgoals
 
     def calculate_locate_predict(self, task=None):
         image, depth = self.env.render(depth=True, camera_name=self.camera, body_invisible=True, resolution=self.resolution)
-        prompt = "Where should I grasp if I need to conduct task {} ? Please output segmentation mask.".format(task)
+        prompt = "Where is the handle ? Please output segmentation mask.".format(task)
         seg = contact_detection.predict(image, prompt)
         depth[depth < self.depth_low] = self.depth_low
         depth[depth > self.depth_high] = self.depth_high
@@ -901,8 +909,8 @@ class MyPolicy_CL_rgbd(Policy):
         self.previous_depth = depth.copy()
         data = self.env.render(camera_name=self.camera, depth=True, body_invisible=True, segmentation=True, resolution=self.resolution)
         
-        pos_curr_2d_1 = np.stack(np.where(data[:, :, -1] == 51), axis=-1)[:, ::-1].mean(0)
-        pos_curr_2d_2 = np.stack(np.where(data[:, :, -1] == 53), axis=-1)[:, ::-1].mean(0)
+        pos_curr_2d_1 = np.median(np.stack(np.where(data[:, :, -1] == 51), axis=-1)[:, ::-1])
+        pos_curr_2d_2 = np.median(np.stack(np.where(data[:, :, -1] == 53), axis=-1)[:, ::-1])
         pos_curr_2d = (pos_curr_2d_1 + pos_curr_2d_2) / 2.
         self.pos_curr_2d = pos_curr_2d
 
@@ -911,7 +919,11 @@ class MyPolicy_CL_rgbd(Policy):
         width, height = image.shape[1], image.shape[0]
         pts_2d = torch.from_numpy(np.stack(np.meshgrid(np.arange(width), np.arange(height)), axis=-1))
         pts_2d = pts_2d[seg > 0]
-        pts_3d = to_3d(pts_2d, depth, cmat)
+        if (seg > 0).any():
+            pts_3d = to_3d(pts_2d, depth, cmat)
+        else:
+            import ipdb;ipdb.set_trace()
+            pts_3d = np.array([0., 0., 0.])
         self.grasp_2ds = pts_2d.detach().cpu().numpy()
         # TODO:
         pts_3d = torch.median(torch.from_numpy(pts_3d), dim=0)[0].detach().cpu().numpy() + np.array([0, 0, 0.0])
@@ -919,8 +931,6 @@ class MyPolicy_CL_rgbd(Policy):
         self.grasp_3d = pts_3d
         subgoals = [pts_3d + np.array([0, 0, 0.2])]
         self.subgoals_2d = subgoals
-        self.replans -= 1
-        self.replan_countdown = self.plan_timeout
         self.time_from_last_plan = 0
 
         return subgoals
@@ -945,8 +955,8 @@ class MyPolicy_CL_rgbd(Policy):
         self.previous_depth = depth.copy()
         data = self.env.render(camera_name=self.camera, depth=True, body_invisible=True, segmentation=True, resolution=self.resolution)
         
-        pos_curr_2d_1 = np.stack(np.where(data[:, :, -1] == 51), axis=-1)[:, ::-1].mean(0)
-        pos_curr_2d_2 = np.stack(np.where(data[:, :, -1] == 53), axis=-1)[:, ::-1].mean(0)
+        pos_curr_2d_1 = np.median(np.stack(np.where(data[:, :, -1] == 51), axis=-1)[:, ::-1])
+        pos_curr_2d_2 = np.median(np.stack(np.where(data[:, :, -1] == 53), axis=-1)[:, ::-1])
         pos_curr_2d = (pos_curr_2d_1 + pos_curr_2d_2) / 2.
         self.pos_curr_2d = pos_curr_2d
 
@@ -998,9 +1008,6 @@ class MyPolicy_CL_rgbd(Policy):
         o3d.io.write_point_cloud('debug.ply', pcd)
         import ipdb;ipdb.set_trace()
         '''
-        ## TODO: end TODO
-        self.replans -= 1
-        self.replan_countdown = self.plan_timeout
         self.time_from_last_plan = 0
         return subgoals
 
@@ -1013,18 +1020,21 @@ class MyPolicy_CL_rgbd(Policy):
         self.previous_depth = depth.copy()
         data = self.env.render(camera_name=self.camera, depth=True, body_invisible=True, segmentation=True, resolution=self.resolution)
         
-        pos_curr_2d_1 = np.stack(np.where(data[:, :, -1] == 51), axis=-1)[:, ::-1].mean(0)
-        pos_curr_2d_2 = np.stack(np.where(data[:, :, -1] == 53), axis=-1)[:, ::-1].mean(0)
+        pos_curr_2d_1 = np.median(np.stack(np.where(data[:, :, -1] == 51), axis=-1)[:, ::-1])
+        pos_curr_2d_2 = np.median(np.stack(np.where(data[:, :, -1] == 53), axis=-1)[:, ::-1])
         pos_curr_2d = (pos_curr_2d_1 + pos_curr_2d_2) / 2.
         self.pos_curr_2d = pos_curr_2d
 
         cmat = get_cmat(self.env, self.camera, resolution=self.resolution)
-        pts_3d = self.grasp_3d        
+        cam_pos = self.env.sim.model.cam_pos[self.env.sim.model.camera_name2id(self.camera)]
+
+        pts_3d = self.grasp_3d
+        direction = pts_3d - cam_pos
+        direction = direction / np.linalg.norm(direction)
+        pts_3d += direction * 0.01
         self.grasp_3d = pts_3d
-        subgoals = [pts_3d + np.array([0, 0, -0.])]
+        subgoals = [pts_3d]
         self.subgoals_2d = subgoals
-        self.replans -= 1
-        self.replan_countdown = self.plan_timeout
         self.time_from_last_plan = 0
         return subgoals
     
@@ -1046,40 +1056,45 @@ class MyPolicy_CL_rgbd(Policy):
     def calculate_traj(self):
         self.mode = 'push'
         self.previous_direction = None
-        image, depth = self.env.render(depth=True, camera_name=self.camera, body_invisible=True, resolution=self.resolution)
-        depth[depth < self.depth_low] = self.depth_low
-        depth[depth > self.depth_high] = self.depth_high
-        self.previous_image = image.copy()
-        self.previous_depth = depth.copy()
+        
+        ## TODO:
+        # image, depth = self.env.render(depth=True, camera_name=self.camera, body_invisible=True, resolution=self.resolution)
+        # depth[depth < self.depth_low] = self.depth_low
+        # depth[depth > self.depth_high] = self.depth_high
+        # self.previous_image = image.copy()
+        # self.previous_depth = depth.copy()
+
+        image = self.previous_image
+        depth = self.previous_depth
         depth -= self.depth_low
         depth /= (self.depth_high - self.depth_low)
+
         data = self.env.render(camera_name=self.camera, depth=True, body_invisible=True, segmentation=True, resolution=self.resolution)
         segm = np.zeros((image.shape[0], image.shape[1]))
-        segm[data[:, :, -1] == 51] = 1
-        segm[data[:, :, -1] == 53] = 2
-        segm1 = (segm == 1).astype(depth.dtype)
-        segm2 = (segm == 2).astype(depth.dtype)
+        segm1 = (segm == 1).astype(depth.dtype) * 0.
+        segm2 = (segm == 2).astype(depth.dtype) * 0.
 
         image_depth_segm = np.concatenate([image, depth[..., None], segm1[..., None], segm2[..., None]], axis=-1)
         cmat = get_cmat(self.env, self.camera, resolution=self.resolution)
         
         # measure time for vidgen
         start = time.time()
-        images, depths, segms1, segms2 = pred_video_rgbd(self.video_model, image_depth_segm, self.task)
+        task = self.task.split("-v2-")[0].replace("-", " ")
+        images, depths, segms1, segms2 = pred_video_rgbd(self.video_model, image_depth_segm, task)
         video = torch.tensor(images)[None].float().cuda()
         ## TODO:
         # self.grasp_2ds = np.expand_dims(self.grasp_2d, axis=0)
         queries = torch.cat([torch.tensor([0] * self.grasp_2ds.shape[0]).unsqueeze(-1), torch.from_numpy(self.grasp_2ds)], dim=-1).cuda().float()
         pred_tracks, pred_visibility = cotracker(video, queries=queries[None])
         subgoals_2d = pred_tracks[0, :, :, :].detach().cpu().numpy()
-        
+
         ## TODO: vis
-        idx = -1
-        image_debug = images[idx].copy().transpose(1, 2, 0).astype(np.uint8).copy()
-        for i in range(len(subgoals_2d[idx])):
-            image_debug = cv2.circle(image_debug, [int(subgoals_2d[idx, i, 0]), int(subgoals_2d[idx, i, 1])], radius=3, color=[255, 0, 0], thickness=-1)
-        cv2.imwrite('debug.png', image_debug)
-        import ipdb;ipdb.set_trace()
+        for idx in range(len(images)):
+            image_debug = images[idx].copy().transpose(1, 2, 0).astype(np.uint8).copy()
+            for i in range(len(subgoals_2d[idx])):
+                image_debug = cv2.circle(image_debug, [int(subgoals_2d[idx, i, 0]), int(subgoals_2d[idx, i, 1])], radius=1, color=[0, 0, 255], thickness=-1)
+            cv2.imwrite('debug_track_{}.png'.format(idx), image_debug)
+        # import ipdb;ipdb.set_trace()
 
         # _, _, flow_debug, flow, flow_b = pred_flow_frame(self.flow_model, images)
         # self.visualize_ply(self.pred_image_depth_segms[0, :, :, :3], self.pred_image_depth_segms[0, :, :, 3] * (self.depth_high - self.depth_low) + self.depth_low, cmat, "debug1.ply")
@@ -1088,19 +1103,38 @@ class MyPolicy_CL_rgbd(Policy):
         for i in range(len(depths)):
             sgs = to_3d(subgoals_2d[i], (depths[i][0] * (self.depth_high - self.depth_low)) + self.depth_low, cmat)
             sg = np.median(sgs, axis=0)
+            if 'grasp' in self.tasks_all:
+                sg += np.array([0, 0, 0.01])
             subgoals.append(sg)
         direction = (self.grasp_3d - subgoals[4]) / np.linalg.norm(self.grasp_3d - subgoals[4])
-        subgoals = [self.grasp_3d + 0.04 * direction] + subgoals
+        if not "grasp" in self.tasks_all:
+            subgoals = [self.grasp_3d + 0.03 * direction] + [self.grasp_3d] + subgoals
         time_vid = time.time() - start
 
         # measure time for action planning
         time_action = time.time() - start
         if self.log: log_time(time_vid/t, time_flow/t, time_action/t, self.max_replans-self.replans+1)
         if self.log and (self.time_from_last_plan!=0): log_time_execution(self.time_from_last_plan*0.1/t, self.max_replans-self.replans)
-        self.replans -= 1
-        self.replan_countdown = self.plan_timeout
         self.time_from_last_plan = 0
+        # subgoals = self.filter_subgoals(subgoals)
         return subgoals
+
+    def filter_subgoals(self, subgoals):
+        subgoals2 = [subgoals[0]]
+        hist_vec = subgoals[1] - subgoals[0]
+        hist_vec = hist_vec / np.linalg.norm(hist_vec)
+        for idx in range(1, len(subgoals) - 1):
+            vec1 = subgoals[idx]
+            vec2 = subgoals[idx + 1]
+            prev_vec = vec2 - vec1
+            prev_vec = prev_vec / np.linalg.norm(prev_vec)
+            simi = (prev_vec * hist_vec).sum() / np.linalg.norm(prev_vec) / np.linalg.norm(hist_vec)
+            if simi > 0.:
+                subgoals2.append(subgoals[idx])
+        subgoals2.append(subgoals[-1])
+        subgoals = subgoals2
+        return subgoals
+
     ''' 
     def get_contact_point(self, pos_curr, image, depth):
         cmat = get_cmat(self.env, self.camera, resolution=self.resolution)
@@ -1218,14 +1252,23 @@ class MyPolicy_CL_rgbd(Policy):
 
     def _desired_pos(self, o_d):
         pos_curr = o_d['hand_pos']
+        if self.is_init:
+            self.cnt_init +=1
+            if self.cnt_init > 50:
+                self.is_init = False
+                self.tasks = self.tasks_all
+                self.subgoals = self.calculate_next_plan(first=True, pos_curr=pos_curr)
+            else:
+                return pos_curr
+        
         self.pos_curr = pos_curr
-        if self.cnt_wait < 30:
+        if self.cnt_wait < 50:
             self.cnt_wait += 1
             return self.pos_curr
         if self.is_traj:
             move_precision = 0.08
         else:
-            move_precision = 0.04
+            move_precision = 0.05
         
         # if stucked/stopped(all subgoals reached), replan
         
@@ -1245,7 +1288,7 @@ class MyPolicy_CL_rgbd(Policy):
             self.subgoals = self.calculate_next_plan(first=True, pos_curr=pos_curr)
             return self.subgoals[0]
 
-        # print(np.linalg.norm((pos_curr - self.subgoals[0])))
+        print(np.linalg.norm((pos_curr - self.subgoals[0])))
         if np.linalg.norm((pos_curr - self.subgoals[0]) ) > move_precision:
             return self.subgoals[0]
         else:
@@ -1263,12 +1306,13 @@ class MyPolicy_CL_rgbd(Policy):
                     self.subgoals = self.calculate_next_plan(pos_curr=pos_curr)
                     return self.subgoals[0]
                 else:
-                    if self.is_traj:
+                    if self.is_traj and not 'grasp' in self.tasks_all:
+                    # if self.is_traj:
                         previous_subgoal = self.subgoals[0]
                         self.subgoals = [
-                            self.subgoals[0] + (self.subgoals[0] - self.previous_subgoal) * 10,
-                            self.subgoals[0] + (self.subgoals[0] - self.previous_subgoal) * 20,
-                            self.subgoals[0] + (self.subgoals[0] - self.previous_subgoal) * 35
+                            self.subgoals[0] + (self.subgoals[0] - self.previous_subgoal) * 3,
+                            self.subgoals[0] + (self.subgoals[0] - self.previous_subgoal) * 5,
+                            self.subgoals[0] + (self.subgoals[0] - self.previous_subgoal) * 10
                         ]
                         self.previous_subgoal = previous_subgoal
                     return self.subgoals[0]
@@ -1412,7 +1456,7 @@ class MyPolicy_CL_rgbd(Policy):
                 self.grasp_lock = True
                 return 0.8
             else:
-                return -0.8
+                return -1.8
         else:
             return 0.8
 

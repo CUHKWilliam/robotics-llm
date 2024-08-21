@@ -1,0 +1,20 @@
+{
+    "door-open-v2-goal-observable": "open the door",
+    "door-close-v2-goal-observable": "close the door",
+    "basketball-v2-goal-observable": "put the basketball into the basket",
+    "shelf-place-v2-goal-observable": "put the cube onto the shelf",
+    "button-press-v2-goal-observable": "press the button",
+    "button-press-topdown-v2-goal-observable": "press the top down button",
+    "faucet-close-v2-goal-observable": "close the faucet",
+    "faucet-open-v2-goal-observable": "open the faucet",
+    "handle-press-v2-goal-observable": "press the handle", 
+    "hammer-v2-goal-observable": "use the hammer to knock in the nail",
+    "assembly-v2-goal-observable": "assemble the ring on to the stab",
+    "drawer-open-v2-goal-observable": "open the drawer",
+    "drawer-close-v2-goal-observable": "close the drawer",
+    "kitchen_knob1_on-v3": "turn on the knob",
+    "kitchen_light_on-v3": "turn on the light",
+    "kitchen_sdoor_open-v3": "open the sliding door in the middle",
+    "kitchen_ldoor_open-v3": "open the door on the left",
+    "kitchen_micro_open-v3": "open the microwave"
+}

@@ -42,7 +42,7 @@ def parse_args():
     )
     parser.add_argument("--image_size", default=1024, type=int, help="image size")
     parser.add_argument("--model_max_length", default=512, type=int)
-    parser.add_argument("--lora_r", default=8, type=int)
+    parser.add_argument("--lora_r", default=0, type=int)
     parser.add_argument(
         "--vision-tower", default="openai/clip-vit-large-patch14", type=str
     )
@@ -76,11 +76,11 @@ def parse_args():
     )
     parser.add_argument("--val_batch_size", default=1, type=int)
     parser.add_argument("--workers", default=4, type=int)
-    parser.add_argument("--lr", default=0.0003, type=float)
+    parser.add_argument("--lr", default=0.003, type=float)
     parser.add_argument("--ce_loss_weight", default=1.0, type=float)
     parser.add_argument("--dice_loss_weight", default=0.5, type=float)
     parser.add_argument("--bce_loss_weight", default=2.0, type=float)
-    parser.add_argument("--lora_alpha", default=16, type=int)
+    parser.add_argument("--lora_alpha", default=4, type=int)
     parser.add_argument("--lora_dropout", default=0.05, type=float)
     parser.add_argument("--lora_target_modules", default="q_proj,v_proj", type=str)
     parser.add_argument("--explanatory", default=0.1, type=float)
@@ -144,9 +144,9 @@ def train(
     # model.eval()
     
     ## TODO:
-    # ckpt_path = "./runs/lisa/model_0.pth"
-    # ckpt = torch.load(ckpt_path)
-    # model.load_state_dict(ckpt['state_dict'], strict=False)
+    ckpt_path = "./runs-lora/lisa/model_9.pth"
+    ckpt = torch.load(ckpt_path)
+    model.load_state_dict(ckpt['state_dict'], strict=False)
     # model.eval()
 
     end = time.time()
@@ -308,28 +308,30 @@ def main():
     ]
 
     lora_r = args.lora_r
-    lora_r = 0
     if lora_r > 0:
         def find_linear_layers(model, lora_target_modules):
             cls = torch.nn.Linear
             lora_module_names = set()
             for name, module in model.named_modules():
-                if (
-                    isinstance(module, cls)
-                    and all(
-                        [
-                            x not in name
-                            for x in [
-                                "visual_model",
-                                "vision_tower",
-                                "mm_projector",
-                                "text_hidden_fcs",
-                            ]
-                        ]
-                    )
-                    and any([x in name for x in lora_target_modules])
-                ):
-                    lora_module_names.add(name)
+                if isinstance(module, cls) and "mask_decoder" in name \
+                    and any([x in name for x in lora_target_modules]):
+                        lora_module_names.add(name)
+                # if (
+                #     isinstance(module, cls)
+                #     and all(
+                #         [
+                #             x not in name
+                #             for x in [
+                #                 "visual_model",
+                #                 "vision_tower",
+                #                 "mm_projector",
+                #                 "text_hidden_fcs",
+                #             ]
+                #         ]
+                #     )
+                #     and any([x in name for x in lora_target_modules])
+                # ):
+                #     lora_module_names.add(name)
             return sorted(list(lora_module_names))
 
         lora_alpha = args.lora_alpha
@@ -347,21 +349,21 @@ def main():
         )
         model = get_peft_model(model, lora_config)
         model.print_trainable_parameters()
-
     model.resize_token_embeddings(len(tokenizer))
 
     # make text_hidden_fcs, mask_decoder, lm_head, embed_tokens trainable
+    
     for n, p in model.named_parameters():
         if any(
             [
                 x in n
-                # for x in ["lm_head", "embed_tokens", "mask_decoder", "text_hidden_fcs"]
-                for x in ["mask_decoder"]
+                for x in ["lm_head", "embed_tokens", "mask_decoder", "text_hidden_fcs"]
+                # for x in ["mask_decoder"]
             ]
         ):
             print("n: ", n, "p.shape: ", p.shape)
             p.requires_grad = True
-
+    
     world_size = torch.cuda.device_count()
     args.distributed = world_size > 1
 
@@ -425,11 +427,11 @@ def main():
         shuffle=True,
     )
     model = model.cuda().bfloat16()
-    # for n, p in model.named_parameters():
-    #     if p.requires_grad:
-    #         print(n)
-    # import ipdb;ipdb.set_trace()
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, )
+    for n, p in model.named_parameters():
+        if p.requires_grad:
+            print(n)
+    
+    optimizer = torch.optim.SGD(model.parameters(), lr=1e-4, )
 
     # model_engine, optimizer, train_loader, scheduler = deepspeed.initialize(
     #     model=model,

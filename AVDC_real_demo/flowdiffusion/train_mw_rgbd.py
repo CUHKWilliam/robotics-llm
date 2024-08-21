@@ -27,7 +27,7 @@ def main(args):
         valid_set = Subset(train_set, valid_inds)
 
     else:
-        train_set = SequentialDatasetv2_rgbd_with_segm(
+        train_set = SequentialDatasetv2_rgbd_with_segm_rw(
             sample_per_seq=sample_per_seq, 
             path="../../AVDC/datasets/{}".format(dataset_name), 
             target_size=target_size,

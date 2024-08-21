@@ -44,7 +44,7 @@ def run(args):
     n_exps = args.n_exps
     resolution = (320, 240)
     cameras = ['corner', 'corner2', 'corner3']
-    # cameras = ['corner3']
+    # cameras = ['corner']
     max_replans = 10
 
     video_model = get_video_model_rgbd(ckpts_dir=args.ckpt_dir, milestone=args.milestone)
@@ -88,14 +88,16 @@ def run(args):
             imageio.mimsave(f'{result_root}/videos/{env_name}/{camera}_{seed}.mp4', images)
             
             # print("test eplen: ", len(images))
-
+            
             if len(images) <= 500:
                 success += 1
                 replans_counter[used_replans] += 1
                 print("success, used replans: ", used_replans)
+                # import ipdb;ipdb.set_trace()
             else:
-                import ipdb;ipdb.set_trace()
-                
+                # import ipdb;ipdb.set_trace()
+                pass
+
         rewards = rewards + [0] * (n_exps - len(rewards))
         reward_means.append(np.mean(rewards))
         reward_stds.append(np.std(rewards))

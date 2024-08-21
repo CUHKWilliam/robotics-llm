@@ -1,7 +1,7 @@
 from goal_diffusion import GoalGaussianDiffusion, Trainer
 from unet import UnetMW_rgbd as Unet_rgbd
 from transformers import CLIPTextModel, CLIPTokenizer
-from datasets import SequentialDatasetv2_rgbd, SequentialDatasetv2_rgbd_tfds2
+from datasets import SequentialDatasetv2_rgbd_with_segm_rw, SequentialDatasetv2_rgbd_tfds2
 from torch.utils.data import Subset
 import argparse
 from minlora import add_lora, apply_to_lora, disable_lora, enable_lora, get_lora_params, merge_lora, name_is_lora, remove_lora, load_multiple_lora, select_lora
@@ -27,7 +27,7 @@ def main(args):
         valid_set = Subset(train_set, valid_inds)
 
     else:
-        train_set = SequentialDatasetv2_rgbd(
+        train_set = SequentialDatasetv2_rgbd_with_segm_rw(
             sample_per_seq=sample_per_seq, 
             path="../datasets/{}".format(dataset_name), 
             target_size=target_size,
