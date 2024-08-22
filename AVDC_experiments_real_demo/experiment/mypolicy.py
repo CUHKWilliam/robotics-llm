@@ -105,7 +105,6 @@ class MyPolicy_CL_rgbd(Policy):
         self.depth_max, self.depth_min = self.dataset.depth_max, self.dataset.depth_min
         plan_timeout = 100
         self.env = env
-        self.seg_ids = name2maskid[task]
         self.full_task_name = task
 
         self.video_model = video_model
@@ -117,6 +116,7 @@ class MyPolicy_CL_rgbd(Policy):
         self.log = log
         self.phase_grasp = True
 
+        self.task = task
         self.tasks = ['locate', 'grasp', self.task]
         subgoals = []
         for i in range(len(self.tasks)):
@@ -136,16 +136,19 @@ class MyPolicy_CL_rgbd(Policy):
         self.grasping = False
         self.time_from_last_plan = 0
 
+    def _parse_obs(self,obs):
+        return None
+    
     def init_grasp(self):
         self.grasped = False
 
     def get_ee_pos(self):
-        return self.env.get_obs()['ee_pos']
+        return self.env.get_obs_remote()['ee_pos']
         
     def get_ee_quat(self):
-        return R.from_euler("ZYX", self.env.get_obs()['ee_euler']).as_quat()
+        return R.from_euler("ZYX", self.env.get_obs_remote()['ee_euler']).as_quat()
 
-    def calculate_next_plan(self, first=False, pos_curr=None):
+    def calculate_next_plan(self, ):
         self.task = self.tasks[0]
         
         if self.task.split(' ')[0] == 'locate':
@@ -191,7 +194,7 @@ class MyPolicy_CL_rgbd(Policy):
 
 
     def calculate_locate(self, task=None):
-        obs =  self.env.get_obs()
+        obs =  self.env.get_obs_remote()
         image, depth = obs['color_image'], obs["depth_image"]
 
         depth[depth < self.depth_low] = self.depth_low
@@ -364,7 +367,7 @@ class MyPolicy_CL_rgbd(Policy):
         return rot_quat, rot_mat
 
     def calculate_traj(self):
-        obs = self.env.get_obs()
+        obs = self.env.get_obs_remote()
         image, depth = obs['color_image'], obs['depth_image']
         depth[depth < self.depth_low] = self.depth_low
         depth[depth > self.depth_high] = self.depth_high

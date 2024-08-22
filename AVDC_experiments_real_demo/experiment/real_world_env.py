@@ -4,9 +4,12 @@ from robot_controller import robot_controller
 import pickle
 
 class RealWorldEnv():
-    def __init__(self, ):
-        rs = RealSense()
-        self.rs = rs
+    def __init__(self, server=False):
+        if not server:
+            rs = RealSense()
+            self.rs = rs
+        else:
+            self.rs = None
         self.robot_controller = robot_controller()
         self.desire_pos = None
         self.desire_euler = None

@@ -32,7 +32,6 @@ def run(args):
     print(env_name)
 
     video_model = get_video_model_rgbd(ckpts_dir=args.ckpt_dir, milestone=args.milestone)
-    flow_model = get_flow_model()
     return_qpos = True
     dummy_dataset = SequentialDatasetv2_rgbd_with_segm_rw(
         sample_per_seq=6, 
@@ -40,9 +39,11 @@ def run(args):
         target_size=(128, 128),
         randomcrop=True
     )
-    policy = MyPolicy_CL_rgbd(env, env_name, video_model, flow_model, dataset=dummy_dataset, return_qpos=return_qpos)
     
-    env = RealWorldEnv()
+    env = RealWorldEnv(server=True)
+    task = env_name.replace("_", " ")
+    policy = MyPolicy_CL_rgbd(env, task, video_model, flow_model=None, dataset=dummy_dataset, return_qpos=return_qpos)
+
     obs = env.get_obs_remote()
 
     while True:
