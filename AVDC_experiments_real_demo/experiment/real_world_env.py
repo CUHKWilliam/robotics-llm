@@ -41,10 +41,13 @@ class RealWorldEnv():
         return reached
     
     def get_obs_remote(self):
+        print("waiting for obs data... ")
         while not self.check_recv():
             continue
+        print("obs get")
         with open(self.data_file_path, "rb") as f:
             recv = pickle.load(f)
+        import ipdb;ipdb.set_trace()
         return recv
     
     def set_action_remote(self, action):
